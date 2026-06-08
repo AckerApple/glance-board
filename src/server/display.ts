@@ -58,6 +58,10 @@ export class DotMatrixController {
     return this.autoSend;
   }
 
+  isReadyToSend(): boolean {
+    return this.status === "connected" || this.status === "sending";
+  }
+
   setIntensity(intensity: number): DotMatrixStatus {
     this.intensity = normalizeIntensity(intensity);
     this.display.intensity = this.intensity;

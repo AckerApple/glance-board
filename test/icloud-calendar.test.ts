@@ -181,7 +181,9 @@ test("calendar provider renders ready, empty, setup, and error states", async ()
     }
   });
 
-  assert.match((await readyProvider.resolve(config)).readableLines[0], /^CAL /);
+  const readyCard = await readyProvider.resolve(config);
+  assert.match(readyCard.readableLines[0], /:/);
+  assert.equal(readyCard.readableLines[0].includes("CAL"), false);
   assert.deepEqual((await emptyProvider.resolve(config)).readableLines, ["CAL EMPTY", "NO EVENTS"]);
   assert.deepEqual((await setupProvider.resolve(config)).readableLines, ["CAL SETUP", "OPEN APP"]);
   assert.deepEqual((await errorProvider.resolve(config)).readableLines, ["CAL ERROR", "OPEN APP"]);

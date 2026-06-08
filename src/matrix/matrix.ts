@@ -2,7 +2,6 @@ import { createEmptyMatrix, drawText, PixelColor, PixelMatrix, setPixel } from "
 import {
   createMatrix16x96,
   drawText as drawText16x96,
-  drawTightText as drawTightText16x96,
   PixelColor as PixelColor16x96,
   PixelMatrix as PixelMatrix16x96,
   setPixel as setPixel16x96
@@ -268,8 +267,8 @@ function renderDateTimeCardToMatrix16x96(card: NormalizedDisplayCard): PixelMatr
   const [line1 = "", line2 = ""] = card.matrixLines;
 
   drawCalendarIcon16x96(matrix, card.dateTime?.scheduledDate ?? card.calendar?.event?.startTime);
-  drawTightText16x96(matrix, fitDisplayLine(line1, 15), 18, 0, "orange");
-  drawTightText16x96(matrix, fitDisplayLine(line2, 15), 18, 8, "white");
+  drawText16x96(matrix, fitDisplayLine(line1, 13), 18, 0, "orange");
+  drawText16x96(matrix, fitDisplayLine(line2, 13), 18, 8, "white");
   if (card.calendar?.isBirthday) drawCakeIcon16x96(matrix, 87, 0);
 
   return matrix;

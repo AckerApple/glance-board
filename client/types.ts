@@ -37,6 +37,7 @@ export interface RotationPayload {
   };
   rotation?: {
     rotationSeconds?: number;
+    paused?: boolean;
     items?: DisplayItem[];
     cards?: DisplayCard[];
     activeCard?: DisplayCard;

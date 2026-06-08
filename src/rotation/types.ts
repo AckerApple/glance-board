@@ -103,6 +103,7 @@ export interface NormalizedDisplayCard {
 
 export interface RotationDisplayState {
   rotationSeconds: number;
+  paused?: boolean;
   items: Array<DisplayItemConfig & { resolved?: boolean; error?: string }>;
   cards: NormalizedDisplayCard[];
   activeCard?: NormalizedDisplayCard;

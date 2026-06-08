@@ -29,8 +29,6 @@ let rotateTimer: number | undefined;
 let progressTimer: number | undefined;
 let rotateSeconds: number | undefined;
 let rotateStartedAt = 0;
-let autoSendTimer: number | undefined;
-let autoSendInFlight = false;
 
 export const actions = {
   start,
@@ -71,7 +69,6 @@ function stop(): void {
   if (pollTimer) window.clearTimeout(pollTimer);
   if (rotateTimer) window.clearInterval(rotateTimer);
   if (progressTimer) window.clearInterval(progressTimer);
-  if (autoSendTimer) window.clearInterval(autoSendTimer);
 }
 
 async function pollRotation(): Promise<void> {
@@ -96,7 +93,7 @@ function applyRotation(payload: RotationPayload): void {
   const currentCardId = cards.some((card) => card.id === preferred)
     ? preferred
     : payload.rotation?.activeCard?.id ?? cards[0]?.id;
-  updateRotation({ payload, currentCardId, error: undefined });
+  updateRotation({ payload, currentCardId, paused: Boolean(payload.rotation?.paused), error: undefined });
   restartRotation();
 }
 
@@ -131,20 +128,25 @@ function showNextItem(): void {
   const index = cards.findIndex((card) => card.id === rotation$[0]?.currentCardId);
   updateRotation({ currentCardId: cards[(index + 1) % cards.length]?.id ?? cards[0]?.id, progress: 1 });
   resetRotationProgress();
-  void postAutoSendCurrentCard();
 }
 
-function toggleRotationPause(): void {
+async function toggleRotationPause(): Promise<void> {
   const paused = !rotation$[0]?.paused;
   updateRotation({ paused });
   restartRotation();
+  try {
+    const payload = await postJson<{ paused: boolean }>("/api/rotation/pause", { paused });
+    updateRotation({ paused: payload.paused });
+    restartRotation();
+  } catch (error) {
+    updateRotation({ error: `Pause failed: ${errorMessage(error)}` });
+  }
 }
 
 function selectCard(id: string): void {
   updateRotation({ currentCardId: id, progress: 1 });
   resetRotationProgress();
   restartRotation();
-  void postAutoSendCurrentCard();
 }
 
 function resetRotationProgress(): void {
@@ -182,7 +184,6 @@ async function runDisplayAction(path: string, body?: unknown): Promise<void> {
     updateHardware({ status: hardwareErrorStatus(error) });
   } finally {
     updateHardware({ busy: false });
-    restartAutoSend();
   }
 }
 
@@ -193,12 +194,10 @@ async function refreshDisplayStatus(): Promise<void> {
   } catch (error) {
     updateHardware({ status: hardwareErrorStatus(error) });
   }
-  restartAutoSend();
 }
 
 function setAutoSend(enabled: boolean): void {
   updateHardware({ autoSend: enabled });
-  restartAutoSend();
   void saveBrowserSettings({ autoSendRotation: enabled });
   void runDisplayAction("/api/display/auto-send", { enabled });
 }
@@ -218,7 +217,7 @@ async function loadBrowserSettings(): Promise<void> {
       autoSend: settings.autoSendRotation,
       intensity: settings.displayIntensity
     });
-    restartAutoSend();
+    void runDisplayAction("/api/display/auto-send", { enabled: settings.autoSendRotation });
   } catch {
     // Browser settings are optional; defaults remain in state.
   }
@@ -234,34 +233,6 @@ async function saveBrowserSettings(patch: Partial<BrowserFormSettings>): Promise
   } catch {
     // Manual control should keep working even if persistence fails.
   }
-}
-
-function restartAutoSend(): void {
-  const connected = isDisplayConnected();
-  const shouldRun = connected && hardware$[0]?.autoSend;
-  if (autoSendTimer) window.clearInterval(autoSendTimer);
-  autoSendTimer = undefined;
-  if (!shouldRun) return;
-  void postAutoSendCurrentCard();
-  autoSendTimer = window.setInterval(postAutoSendCurrentCard, 1000);
-}
-
-async function postAutoSendCurrentCard(): Promise<void> {
-  if (!isDisplayConnected() || !hardware$[0]?.autoSend || autoSendInFlight) return;
-  autoSendInFlight = true;
-  try {
-    const status = await postJson<DisplayStatus>("/api/display/send-current", { cardId: rotation$[0]?.currentCardId });
-    updateHardware({ status });
-  } catch {
-    // The next heartbeat or manual action will surface connection state.
-  } finally {
-    autoSendInFlight = false;
-  }
-}
-
-function isDisplayConnected(): boolean {
-  const status = hardware$[0]?.status?.status;
-  return status === "connected" || status === "sending";
 }
 
 async function refreshLocation(): Promise<void> {

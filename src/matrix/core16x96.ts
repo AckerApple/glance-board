@@ -17,14 +17,14 @@ export function setPixel(matrix: PixelMatrix, x: number, y: number, value: Pixel
 }
 
 export function drawText(matrix: PixelMatrix, text: string, x: number, y: number, color: PixelColor = "white"): void {
-  drawTextWithAdvance(matrix, text, x, y, color, 6);
+  drawTextWithAdvance(matrix, text, x, y, color, characterAdvance);
 }
 
 export function drawTightText(matrix: PixelMatrix, text: string, x: number, y: number, color: PixelColor = "white"): void {
-  drawTextWithAdvance(matrix, text, x, y, color, 5);
+  drawTextWithAdvance(matrix, text, x, y, color, () => 5);
 }
 
-function drawTextWithAdvance(matrix: PixelMatrix, text: string, x: number, y: number, color: PixelColor, advance: number): void {
+function drawTextWithAdvance(matrix: PixelMatrix, text: string, x: number, y: number, color: PixelColor, advanceFor: (character: string) => number): void {
   let cursor = x;
   for (const character of sanitizeDisplayText(text).toUpperCase()) {
     const glyph = getGlyph(character);
@@ -33,8 +33,13 @@ function drawTextWithAdvance(matrix: PixelMatrix, text: string, x: number, y: nu
         if (glyph[row][col] === "1") setPixel(matrix, cursor + col, y + row, color);
       }
     }
-    cursor += advance;
+    cursor += advanceFor(character);
   }
+}
+
+function characterAdvance(character: string): number {
+  if (character === ":" || character === "." || character === " ") return 4;
+  return 6;
 }
 
 export function renderTextToMatrix16x96(text: string): PixelMatrix {

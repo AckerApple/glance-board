@@ -17,12 +17,11 @@ export async function resolveCalendarDisplay(
     if (!event) return emptyCalendarCard(sourceType, eventIndex);
     const dateLabel = formatDateLabel(event);
     const timeLabel = formatTimeLabel(event);
-    const shortTitle = shortEventTitle(event.title, event.isAllDay ? 15 : 6);
-    const eventLine = event.isAllDay ? shortTitle : `${timeLabel} ${shortTitle}`;
+    const shortTitle = shortEventTitle(event.title, 13);
+    const timeLine = event.isAllDay ? "ALL DAY" : timeLabel;
     const isBirthday = isBirthdayEvent(event.title);
-    const readableLines = [`${isBirthday ? "🎂 " : ""}CAL ${dateLabel}`, eventLine];
-    const matrixLines = sanitizeDisplayLines([`CAL ${dateLabel}`, eventLine]);
-    const matrixLength = event.isAllDay ? 15 : 13;
+    const readableLines = [`${isBirthday ? "🎂 " : ""}${timeLine}`, shortTitle];
+    const matrixLines = sanitizeDisplayLines([timeLine, shortTitle]);
     return {
       calendar: {
         sourceType,
@@ -36,7 +35,7 @@ export async function resolveCalendarDisplay(
         event
       },
       readableLines,
-      matrixLines: matrixLines.map((line) => fitDisplayLine(line, matrixLength)),
+      matrixLines: matrixLines.map((line) => fitDisplayLine(line, 13)),
       debug: {
         provider: event.provider,
         calendarId: event.calendarId,

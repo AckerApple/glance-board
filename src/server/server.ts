@@ -24,6 +24,9 @@ export async function startRotatingDisplayServer(port: number): Promise<Rotating
   let latestState: NbaDisplayState | undefined;
   let latestRotation: RotationDisplayState | undefined;
   let activeCardId: string | undefined;
+  let rotationPaused = false;
+  let rotationTimer: NodeJS.Timeout | undefined;
+  let rotationTickInFlight = false;
   const rotationEngine = new RotationEngine();
   const googleCalendar = new GoogleCalendarService(port);
   const icloudCalendar = new ICloudCalendarService();
@@ -34,12 +37,52 @@ export async function startRotatingDisplayServer(port: number): Promise<Rotating
   });
   const browserSettings = new BrowserSettingsService();
 
+  const stopBackendRotation = () => {
+    if (rotationTimer) clearTimeout(rotationTimer);
+    rotationTimer = undefined;
+  };
+
+  const scheduleBackendRotation = (delayMs = 0) => {
+    stopBackendRotation();
+    if (!display.isAutoSendEnabled() || rotationPaused || !display.isReadyToSend()) return;
+    rotationTimer = setTimeout(() => {
+      void tickBackendRotation();
+    }, delayMs);
+  };
+
+  const tickBackendRotation = async () => {
+    if (rotationTickInFlight || !display.isAutoSendEnabled() || rotationPaused || !display.isReadyToSend()) {
+      scheduleBackendRotation(1000);
+      return;
+    }
+
+    rotationTickInFlight = true;
+    try {
+      const [state, rotation] = await Promise.all([fetchNbaDisplayState(), rotationEngine.refresh()]);
+      latestState = state;
+      latestRotation = rotation;
+      const card = rotationEngine.next() ?? rotation.activeCard;
+      if (card) {
+        rotation.activeCard = card;
+        activeCardId = card.id;
+        await display.sendCard(card);
+      }
+      latestRotation = { ...rotation, paused: rotationPaused };
+    } catch (error) {
+      console.warn("[Rotation] Backend auto-send tick failed", error instanceof Error ? error.message : error);
+    } finally {
+      rotationTickInFlight = false;
+      const seconds = latestRotation?.rotationSeconds ?? 10;
+      scheduleBackendRotation(Math.max(1, seconds) * 1000);
+    }
+  };
+
   const server = http.createServer(async (request, response) => {
     try {
       const url = new URL(request.url ?? "/", `http://${request.headers.host ?? "localhost"}`);
 
       if (url.pathname === "/api/rotation" || url.pathname === "/api/nba-score") {
-        const handled = await handleScoreApi(response, display, rotationEngine, activeCardId);
+        const handled = await handleScoreApi(response, display, rotationEngine, activeCardId, rotationPaused);
         latestState = handled.legacyState;
         latestRotation = handled.rotation;
         activeCardId = handled.rotation.activeCard?.id;
@@ -57,10 +100,21 @@ export async function startRotatingDisplayServer(port: number): Promise<Rotating
         const enabled = typeof body.enabled === "boolean" ? body.enabled : false;
 
         await setDisplayItemEnabled(id, enabled);
-        const handled = await handleScoreApi(response, display, rotationEngine, activeCardId === id && !enabled ? undefined : activeCardId);
+        const handled = await handleScoreApi(response, display, rotationEngine, activeCardId === id && !enabled ? undefined : activeCardId, rotationPaused);
         latestState = handled.legacyState;
         latestRotation = handled.rotation;
         activeCardId = handled.rotation.activeCard?.id;
+        scheduleBackendRotation();
+        return;
+      }
+
+      if (url.pathname === "/api/rotation/pause" && request.method === "POST") {
+        const body = await readJsonBody(request);
+        rotationPaused = Boolean(body.paused);
+        if (latestRotation) latestRotation = { ...latestRotation, paused: rotationPaused };
+        if (rotationPaused) stopBackendRotation();
+        else scheduleBackendRotation();
+        sendJson(response, { paused: rotationPaused });
         return;
       }
 
@@ -107,11 +161,14 @@ export async function startRotatingDisplayServer(port: number): Promise<Rotating
       }
 
       if (url.pathname === "/api/display/connect" && request.method === "POST") {
-        sendJson(response, await display.connect());
+        const status = await display.connect();
+        scheduleBackendRotation();
+        sendJson(response, status);
         return;
       }
 
       if (url.pathname === "/api/display/disconnect" && request.method === "POST") {
+        stopBackendRotation();
         sendJson(response, await display.disconnect());
         return;
       }
@@ -138,7 +195,10 @@ export async function startRotatingDisplayServer(port: number): Promise<Rotating
 
       if (url.pathname === "/api/display/auto-send" && request.method === "POST") {
         const body = await readJsonBody(request);
-        sendJson(response, display.setAutoSend(Boolean(body.enabled)));
+        const status = display.setAutoSend(Boolean(body.enabled));
+        if (status.autoSend) scheduleBackendRotation();
+        else stopBackendRotation();
+        sendJson(response, status);
         return;
       }
 
@@ -165,6 +225,7 @@ export async function startRotatingDisplayServer(port: number): Promise<Rotating
   return {
     url: `http://localhost:${port}`,
     close: async () => {
+      stopBackendRotation();
       await new Promise<void>((resolve, reject) => server.close((error) => (error ? reject(error) : resolve())));
       await vite?.close();
     }
@@ -364,13 +425,15 @@ async function handleScoreApi(
   response: http.ServerResponse,
   display: DotMatrixController,
   rotationEngine: RotationEngine,
-  preferredCardId: string | undefined
+  preferredCardId: string | undefined,
+  paused: boolean
 ): Promise<{ legacyState: NbaDisplayState; rotation: RotationDisplayState }> {
   const [state, rotation] = await Promise.all([fetchNbaDisplayState(), rotationEngine.refresh()]);
   if (preferredCardId) {
     const activeCard = rotationEngine.select(preferredCardId);
     if (activeCard) rotation.activeCard = activeCard;
   }
+  rotation.paused = paused;
   const fallbackGame = state.currentGame ?? state.nextGame ?? noGameState();
   const payload = buildScoreResponse(state, fallbackGame, rotation);
 
