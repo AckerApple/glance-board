@@ -13,6 +13,8 @@ import { NbaDisplayMode, NbaDisplayState, NbaScoreResponse, NormalizedDisplayCar
 import { setDisplayItemEnabled } from "../rotation/display-config.js";
 
 const publicDir = path.resolve(process.cwd(), process.env.GLANCEBOARD_PUBLIC_DIR ?? "public");
+const RECONNECT_BASE_DELAY_MS = 5_000;
+const RECONNECT_MAX_DELAY_MS = 60_000;
 
 export interface RotatingDisplayServer {
   url: string;
@@ -27,6 +29,10 @@ export async function startRotatingDisplayServer(port: number): Promise<Rotating
   let rotationPaused = false;
   let rotationTimer: NodeJS.Timeout | undefined;
   let rotationTickInFlight = false;
+  let reconnectTimer: NodeJS.Timeout | undefined;
+  let reconnectAttempts = 0;
+  let reconnectInFlight = false;
+  let autoReconnectEnabled = true;
   const rotationEngine = new RotationEngine();
   const googleCalendar = new GoogleCalendarService(port);
   const icloudCalendar = new ICloudCalendarService();
@@ -37,6 +43,46 @@ export async function startRotatingDisplayServer(port: number): Promise<Rotating
   });
   const browserSettings = new BrowserSettingsService();
 
+  const stopReconnect = () => {
+    if (reconnectTimer) clearTimeout(reconnectTimer);
+    reconnectTimer = undefined;
+  };
+
+  const scheduleReconnect = (delayMs = reconnectDelayMs(reconnectAttempts)) => {
+    stopReconnect();
+    if (!autoReconnectEnabled || display.isConnected()) return;
+    reconnectTimer = setTimeout(() => {
+      void reconnectDisplay();
+    }, delayMs);
+  };
+
+  const reconnectDisplay = async () => {
+    if (!autoReconnectEnabled || reconnectInFlight || display.isConnected()) return;
+    reconnectInFlight = true;
+    try {
+      const status = await display.connect();
+      if (status.status === "connected") {
+        reconnectAttempts = 0;
+        scheduleBackendRotation();
+        return;
+      }
+
+      reconnectAttempts += 1;
+      scheduleReconnect();
+    } catch (error) {
+      reconnectAttempts += 1;
+      console.warn("[Display] Auto-reconnect failed", error instanceof Error ? error.message : error);
+      scheduleReconnect();
+    } finally {
+      reconnectInFlight = false;
+    }
+  };
+
+  const enableAutoReconnect = () => {
+    autoReconnectEnabled = true;
+    if (!display.isConnected()) scheduleReconnect(0);
+  };
+
   const stopBackendRotation = () => {
     if (rotationTimer) clearTimeout(rotationTimer);
     rotationTimer = undefined;
@@ -44,7 +90,11 @@ export async function startRotatingDisplayServer(port: number): Promise<Rotating
 
   const scheduleBackendRotation = (delayMs = 0) => {
     stopBackendRotation();
-    if (!display.isAutoSendEnabled() || rotationPaused || !display.isReadyToSend()) return;
+    if (!display.isAutoSendEnabled() || rotationPaused) return;
+    if (!display.isReadyToSend()) {
+      scheduleReconnect(0);
+      return;
+    }
     rotationTimer = setTimeout(() => {
       void tickBackendRotation();
     }, delayMs);
@@ -52,6 +102,7 @@ export async function startRotatingDisplayServer(port: number): Promise<Rotating
 
   const tickBackendRotation = async () => {
     if (rotationTickInFlight || !display.isAutoSendEnabled() || rotationPaused || !display.isReadyToSend()) {
+      if (!display.isReadyToSend()) scheduleReconnect(0);
       scheduleBackendRotation(1000);
       return;
     }
@@ -65,7 +116,8 @@ export async function startRotatingDisplayServer(port: number): Promise<Rotating
       if (card) {
         rotation.activeCard = card;
         activeCardId = card.id;
-        await display.sendCard(card);
+        const status = await display.sendCard(card);
+        if (status.status === "error") scheduleReconnect(0);
       }
       latestRotation = { ...rotation, paused: rotationPaused };
     } catch (error) {
@@ -76,6 +128,10 @@ export async function startRotatingDisplayServer(port: number): Promise<Rotating
       scheduleBackendRotation(Math.max(1, seconds) * 1000);
     }
   };
+
+  const settings = await browserSettings.get();
+  display.setIntensity(settings.displayIntensity);
+  display.setAutoSend(settings.autoSendRotation);
 
   const server = http.createServer(async (request, response) => {
     try {
@@ -161,13 +217,17 @@ export async function startRotatingDisplayServer(port: number): Promise<Rotating
       }
 
       if (url.pathname === "/api/display/connect" && request.method === "POST") {
+        enableAutoReconnect();
         const status = await display.connect();
+        if (status.status !== "connected") scheduleReconnect();
         scheduleBackendRotation();
         sendJson(response, status);
         return;
       }
 
       if (url.pathname === "/api/display/disconnect" && request.method === "POST") {
+        autoReconnectEnabled = false;
+        stopReconnect();
         stopBackendRotation();
         sendJson(response, await display.disconnect());
         return;
@@ -178,7 +238,10 @@ export async function startRotatingDisplayServer(port: number): Promise<Rotating
         const cardId = typeof body.cardId === "string" ? body.cardId : undefined;
         const card = selectCard(latestRotation, cardId ?? activeCardId);
         if (card) {
-          sendJson(response, await display.sendCard(card));
+          enableAutoReconnect();
+          const status = await display.sendCard(card);
+          if (status.status === "error") scheduleReconnect(0);
+          sendJson(response, status);
           return;
         }
 
@@ -189,15 +252,22 @@ export async function startRotatingDisplayServer(port: number): Promise<Rotating
           response.end(JSON.stringify({ error: "No display item has been fetched yet." }));
           return;
         }
-        sendJson(response, await display.sendGame(game, mode));
+        enableAutoReconnect();
+        const status = await display.sendGame(game, mode);
+        if (status.status === "error") scheduleReconnect(0);
+        sendJson(response, status);
         return;
       }
 
       if (url.pathname === "/api/display/auto-send" && request.method === "POST") {
         const body = await readJsonBody(request);
         const status = display.setAutoSend(Boolean(body.enabled));
-        if (status.autoSend) scheduleBackendRotation();
-        else stopBackendRotation();
+        if (status.autoSend) {
+          enableAutoReconnect();
+          scheduleBackendRotation();
+        } else {
+          stopBackendRotation();
+        }
         sendJson(response, status);
         return;
       }
@@ -221,15 +291,21 @@ export async function startRotatingDisplayServer(port: number): Promise<Rotating
   });
 
   await new Promise<void>((resolve) => server.listen(port, resolve));
+  enableAutoReconnect();
 
   return {
     url: `http://localhost:${port}`,
     close: async () => {
       stopBackendRotation();
+      stopReconnect();
       await new Promise<void>((resolve, reject) => server.close((error) => (error ? reject(error) : resolve())));
       await vite?.close();
     }
   };
+}
+
+function reconnectDelayMs(attempts: number): number {
+  return Math.min(RECONNECT_MAX_DELAY_MS, RECONNECT_BASE_DELAY_MS * 2 ** Math.min(attempts, 4));
 }
 
 async function createViteDevServer() {

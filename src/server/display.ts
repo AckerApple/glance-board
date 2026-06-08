@@ -21,6 +21,7 @@ export class DotMatrixController {
   private lastSentAt: string | undefined;
   private autoSend = false;
   private intensity = 1;
+  private connectPromise: Promise<DotMatrixStatus> | undefined;
 
   constructor(
     private readonly options: {
@@ -62,6 +63,10 @@ export class DotMatrixController {
     return this.status === "connected" || this.status === "sending";
   }
 
+  isConnected(): boolean {
+    return this.status === "connected";
+  }
+
   setIntensity(intensity: number): DotMatrixStatus {
     this.intensity = normalizeIntensity(intensity);
     this.display.intensity = this.intensity;
@@ -70,13 +75,25 @@ export class DotMatrixController {
   }
 
   async connect(): Promise<DotMatrixStatus> {
+    if (this.connectPromise) return this.connectPromise;
+    this.connectPromise = this.connectOnce();
     try {
+      return await this.connectPromise;
+    } finally {
+      this.connectPromise = undefined;
+    }
+  }
+
+  private async connectOnce(): Promise<DotMatrixStatus> {
+    try {
+      if (this.status === "connected") return this.snapshot();
       this.status = "connecting";
       this.lastMessage = "Connecting to dot matrix display...";
       await this.display.connect();
       this.status = "connected";
       this.lastMessage = "Connected to dot matrix display";
     } catch (error) {
+      await this.display.disconnect().catch(() => undefined);
       this.status = "error";
       this.lastMessage = error instanceof Error ? error.message : String(error);
     }
@@ -100,6 +117,7 @@ export class DotMatrixController {
       this.lastSentAt = new Date().toISOString();
       this.lastMessage = "Sent NBA score to dot matrix";
     } catch (error) {
+      await this.display.disconnect().catch(() => undefined);
       this.status = "error";
       this.lastMessage = error instanceof Error ? error.message : String(error);
     }
@@ -116,6 +134,7 @@ export class DotMatrixController {
       this.lastSentAt = new Date().toISOString();
       this.lastMessage = `Sent ${card.title} to dot matrix`;
     } catch (error) {
+      await this.display.disconnect().catch(() => undefined);
       this.status = "error";
       this.lastMessage = error instanceof Error ? error.message : String(error);
     }
