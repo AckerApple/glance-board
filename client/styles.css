@@ -1,0 +1,511 @@
+:root {
+  color-scheme: dark;
+  --bg: #050505;
+  --panel: #151515;
+  --line: #2b2b2b;
+  --text: #f7f7f7;
+  --muted: #a8a8a8;
+  --green: #34d45c;
+  --orange: #ff8a24;
+  --red: #ff4f4f;
+}
+
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--text);
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+}
+
+main {
+  max-width: 1250px;
+  margin: 0 auto;
+  padding: 32px 20px 48px;
+}
+
+header,
+section,
+details {
+  margin-bottom: 24px;
+}
+
+hr {
+  margin: 28px 0;
+  border: 0;
+  border-top: 1px solid var(--line);
+}
+
+h1 {
+  margin: 0;
+  font-size: clamp(36px, 8vw, 72px);
+  line-height: 1;
+}
+
+h2 {
+  margin: 0 0 10px;
+  font-size: 18px;
+}
+
+.eyebrow {
+  margin: 0 0 8px;
+  color: var(--orange);
+  font-size: 13px;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.status,
+.muted {
+  color: var(--muted);
+}
+
+.mode-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px;
+  margin-top: 16px;
+}
+
+#modeIndicator {
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: var(--panel);
+  color: var(--green);
+  padding: 8px 12px;
+  font-weight: 800;
+}
+
+.panels {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 14px;
+}
+
+.item-list {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(330px, 1fr));
+  gap: 10px;
+}
+
+.item-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto auto;
+  align-items: center;
+  gap: 10px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #101010;
+  padding: 10px;
+}
+
+.item-row.active {
+  border-color: var(--green);
+  box-shadow: 0 0 0 1px rgba(52, 212, 92, 0.25);
+}
+
+.item-toggle strong {
+  overflow-wrap: break-word;
+  word-break: normal;
+  hyphens: auto;
+}
+
+.item-status {
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 800;
+  text-transform: uppercase;
+}
+
+.item-chip {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  text-align: left;
+}
+
+.item-chip strong,
+.item-chip span {
+  min-width: 0;
+}
+
+.item-chip strong {
+  overflow-wrap: anywhere;
+}
+
+.item-chip span {
+  color: var(--muted);
+  font-size: 12px;
+  text-transform: uppercase;
+}
+
+.item-chip.active {
+  border-color: var(--green);
+  color: var(--green);
+}
+
+.readable-panel {
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #101010;
+  padding: 14px;
+}
+
+.readable-panel.active {
+  border-color: var(--green);
+  box-shadow: 0 0 0 1px rgba(52, 212, 92, 0.35), 0 0 30px rgba(52, 212, 92, 0.12);
+}
+
+.panel-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin-bottom: 10px;
+}
+
+.panel-header h2 {
+  margin: 0;
+}
+
+.panel-header span {
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 800;
+  text-transform: uppercase;
+}
+
+.panel-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.panel-actions button {
+  padding: 7px 10px;
+}
+
+.readable,
+.debug {
+  margin: 0;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--panel);
+  color: var(--text);
+  padding: 16px;
+  overflow: auto;
+}
+
+.readable {
+  font-size: 34px;
+  line-height: 1.18;
+  font-weight: 800;
+}
+
+.game-details {
+  margin: 10px 0 0;
+  color: var(--muted);
+  font-size: 18px;
+}
+
+.rotation-progress {
+  height: 8px;
+  margin-top: 10px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: #080808;
+  overflow: hidden;
+}
+
+.rotation-progress-fill {
+  height: 100%;
+  border-radius: inherit;
+  background: linear-gradient(90deg, var(--green), var(--orange));
+  transition: width 180ms linear;
+}
+
+.display-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+}
+
+button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--panel);
+  color: var(--text);
+  padding: 10px 14px;
+  font: inherit;
+  font-weight: 700;
+  line-height: 1.15;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+input[type="text"],
+input[type="email"],
+input[type="number"],
+input[type="password"],
+select {
+  min-width: min(360px, 100%);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--panel);
+  color: var(--text);
+  padding: 10px 12px;
+  font: inherit;
+}
+
+.location-form {
+  display: grid;
+  gap: 8px;
+}
+
+.location-form label {
+  color: var(--muted);
+}
+
+.location-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.location-actions input {
+  min-width: 150px;
+  width: 150px;
+}
+
+.credentials-form {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+  margin-top: 14px;
+}
+
+.credentials-form label {
+  color: var(--muted);
+}
+
+.credentials-form input,
+.credentials-form button {
+  grid-column: span 2;
+}
+
+button:hover {
+  border-color: var(--green);
+}
+
+button:disabled {
+  cursor: not-allowed;
+  opacity: 0.65;
+}
+
+.checkbox {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--muted);
+}
+
+.intensity-control {
+  display: grid;
+  gap: 8px;
+  margin-top: 14px;
+  color: var(--muted);
+}
+
+.intensity-control input {
+  width: min(360px, 100%);
+  accent-color: var(--green);
+}
+
+.calendar-setup {
+  display: grid;
+  grid-template-columns: minmax(220px, 1fr) minmax(140px, 180px) auto auto;
+  align-items: end;
+  gap: 10px;
+  margin-top: 14px;
+}
+
+.calendar-setup .calendar-select-label {
+  grid-column: 1;
+}
+
+.calendar-setup .event-count-label {
+  grid-column: 2;
+}
+
+.calendar-select-control {
+  grid-column: 1;
+}
+
+.event-count-control {
+  grid-column: 2;
+  min-width: 0;
+  width: 100%;
+}
+
+.save-calendar-control {
+  grid-column: 3;
+}
+
+.install-calendar-control {
+  grid-column: 4;
+}
+
+.calendar-setup label {
+  color: var(--muted);
+}
+
+.calendar-setup > label:not(.calendar-select-label):not(.event-count-label) {
+  grid-column: 1 / -1;
+}
+
+.calendar-setup > select:not(.calendar-select-control) {
+  grid-column: 1 / 3;
+}
+
+.calendar-events {
+  display: grid;
+  gap: 8px;
+  margin-top: 14px;
+}
+
+.calendar-events div {
+  display: flex;
+  gap: 12px;
+  align-items: baseline;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--panel);
+  padding: 10px 12px;
+}
+
+.calendar-events strong {
+  color: var(--green);
+  min-width: 120px;
+}
+
+.calendar-events span {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.calendar-events .calendar-help {
+  display: grid;
+  gap: 8px;
+  align-items: start;
+}
+
+.calendar-help strong {
+  min-width: 0;
+  color: var(--orange);
+}
+
+.calendar-help pre {
+  margin: 0;
+  overflow: auto;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #080808;
+  color: var(--text);
+  padding: 10px;
+}
+
+.calendar-security-note {
+  border-left: 4px solid var(--orange);
+  background: #24190c;
+  color: #ffe2bd;
+  padding: 10px 12px;
+}
+
+.calendar-security-note strong,
+.calendar-security-note span {
+  display: block;
+}
+
+.calendar-security-note span {
+  margin-top: 5px;
+}
+
+.calendar-security-note a {
+  color: var(--orange);
+  font-weight: 800;
+}
+
+canvas {
+  display: block;
+  width: 100%;
+  height: auto;
+  image-rendering: pixelated;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #000;
+}
+
+.error {
+  border-left: 4px solid var(--red);
+  padding: 10px 12px;
+  background: #2a1010;
+  color: #ffd6d6;
+}
+
+summary {
+  cursor: pointer;
+  color: var(--green);
+}
+
+.debug-cards {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: 10px;
+  margin: 12px 0;
+}
+
+.debug-card {
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--panel);
+  padding: 12px;
+}
+
+.debug-card strong {
+  display: block;
+  color: var(--muted);
+  font-size: 12px;
+  text-transform: uppercase;
+}
+
+.debug-card span {
+  display: block;
+  margin-top: 4px;
+  color: var(--text);
+  font-size: 18px;
+  font-weight: 800;
+  word-break: break-word;
+}
+
+@media (max-width: 680px) {
+  .calendar-setup {
+    grid-template-columns: 1fr;
+  }
+
+  .calendar-events div {
+    display: grid;
+    gap: 4px;
+  }
+}
+
+@media (max-width: 760px) {
+  .panels {
+    grid-template-columns: 1fr;
+  }
+}

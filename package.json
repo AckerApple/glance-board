@@ -1,0 +1,31 @@
+{
+  "name": "glanceboard",
+  "version": "0.1.0",
+  "private": true,
+  "description": "A private local-first rotating display for sports, weather, calendar, fuel, astronomy, and other glanceable information on a 16x96 LED matrix.",
+  "type": "module",
+  "scripts": {
+    "dev": "GLANCEBOARD_VITE_DEV=true tsx src/server/index.ts",
+    "typecheck": "tsc --noEmit",
+    "test": "tsx --test test/*.test.ts",
+    "build:server": "tsc -p tsconfig.build.json",
+    "build:client": "vite build",
+    "build": "npm run build:server && npm run build:client",
+    "start": "GLANCEBOARD_PUBLIC_DIR=dist/public node dist/src/server/index.js",
+    "check": "npm run typecheck && npm test && npm run build"
+  },
+  "dependencies": {
+    "@abandonware/noble": "^1.9.2-25",
+    "taggedjs": "file:../../web/taggedjs/main/dist",
+    "ts-caldav": "^0.3.7"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.2",
+    "tsx": "^4.19.2",
+    "typescript": "^5.7.2",
+    "vite": "^6.4.3"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}
