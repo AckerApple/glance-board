@@ -1,5 +1,21 @@
 # TODO
 
+1. The backend still seems to connected to the front end in terms of being able to update the display
+2. On the browser display the "16x96 Dot Matrix Preview" needs to be at the top of the page just before "⚙️ Configured Items"
+3. On the weather rotation, lets display the Humidtity down at bottom right
+  - Instead of "H46" use "46%" for humidity
+4. On the weather display rotation could we display the low and high temp along with current
+  2.a. maybe as "80F L78* H84*" where stars are intended to be degree dots indicating Low of 78 degrees
+5. Is it possible that if the weather is sunny no clouds that the dot matrix could have a sun icon instead of the white cloud
+6. Many items do not need to update every 15 seconds
+  - ICal can update every 5 minutes
+  - NBA, NHL, NFL next game can update every 30 minutes
+  - Moonphase every 1 hour
+  - local weather every 5 minutes
+  - current date time every 45 seconds
+  - Average gas prices every 15 minutes
+
+
 ## Make This Repo Laptop-Independent
 
 - Replace the local `taggedjs` dependency in `package.json`.

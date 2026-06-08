@@ -399,7 +399,7 @@ async function handleICloudCalendarApi(
     const calendarId = typeof body.calendarId === "string" ? body.calendarId : undefined;
     const eventShowCount = typeof body.eventShowCount === "number" ? body.eventShowCount : undefined;
     await icloudCalendar.installRotationItems(calendarId, eventShowCount);
-    sendJson(response, { ok: true });
+    sendJson(response, { ok: true, status: await icloudCalendar.status() });
     return true;
   }
 

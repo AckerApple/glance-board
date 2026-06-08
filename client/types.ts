@@ -6,6 +6,9 @@ export interface DisplayItem {
   enabled: boolean;
   resolved?: boolean;
   error?: string;
+  lastUpdated?: string;
+  lastUpdatedAgeMinutes?: number;
+  refreshIntervalSeconds?: number;
 }
 
 export interface DisplayCard {
@@ -16,12 +19,26 @@ export interface DisplayCard {
   league?: string;
   readableLines?: string[];
   dotMatrix?: PixelMatrix;
+  matrixLines?: string[];
   game?: {
     status?: string;
     period?: number;
     clock?: string;
     scheduledTime?: string;
+    scheduledDate?: string;
+    eventName?: string;
+    shortName?: string;
+    league?: string;
+    awayTeam?: unknown;
+    homeTeam?: unknown;
   };
+  moon?: unknown;
+  weather?: unknown;
+  dateTime?: unknown;
+  calendar?: unknown;
+  debug?: Record<string, unknown>;
+  raw?: unknown;
+  error?: string;
 }
 
 export interface RotationPayload {
@@ -37,6 +54,7 @@ export interface RotationPayload {
   };
   rotation?: {
     rotationSeconds?: number;
+    refreshIntervalSeconds?: number;
     paused?: boolean;
     items?: DisplayItem[];
     cards?: DisplayCard[];
@@ -86,6 +104,7 @@ export interface CalendarEvent {
 export interface ICloudCalendarStatus {
   credentialsConfigured?: boolean;
   connected?: boolean;
+  appleId?: string;
   selectedCalendarId?: string;
   selectedCalendarName?: string;
   eventShowCount?: number;

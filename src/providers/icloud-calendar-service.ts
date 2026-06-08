@@ -73,6 +73,7 @@ export class ICloudCalendarService {
     return {
       credentialsConfigured: Boolean(credentials.appleId && credentials.appSpecificPassword),
       connected: Boolean(credentials.appleId && credentials.appSpecificPassword),
+      appleId: credentials.appleId,
       selectedCalendarId: settings.calendarId,
       selectedCalendarName: settings.calendarName,
       eventShowCount: normalizeEventShowCount(settings.eventShowCount),
@@ -146,6 +147,12 @@ export class ICloudCalendarService {
     const selectedCalendarId = calendarId ?? settings.calendarId;
     if (!selectedCalendarId) throw new ICloudNotConfiguredError("No iCloud Calendar selected");
     const count = normalizeEventShowCount(eventShowCount ?? settings.eventShowCount);
+    await this.storage.write(SETTINGS_FILE, {
+      ...settings,
+      provider: "icloud",
+      calendarId: selectedCalendarId,
+      eventShowCount: count
+    });
     const config = await this.storage.loadDisplayConfig();
     const nextItems: DisplayItemConfig[] = Array.from({ length: count }, (_, eventIndex) => ({
       id: `icloud-calendar-next-${eventIndex + 1}`,

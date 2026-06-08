@@ -10,7 +10,7 @@ import {
 } from "../src/providers/icloud-calendar-service.js";
 import { DisplayItemsConfig } from "../src/rotation/types.js";
 
-test("connect stores credentials without exposing them in status and disconnect removes local state", async () => {
+test("connect stores credentials, exposes only email in status, and disconnect removes local state", async () => {
   const storage = createMemoryStorage();
   const calendars = [calendarFixture("Family")];
   const service = new ICloudCalendarService({
@@ -32,7 +32,7 @@ test("connect stores credentials without exposing them in status and disconnect 
   const status = await service.status();
 
   assert.equal(status.connected, true);
-  assert.equal("appleId" in status, false);
+  assert.equal(status.appleId, "user@example.com");
   assert.equal("appSpecificPassword" in status, false);
   assert.deepEqual(storage.files.get("icloud-calendar-credentials.json"), {
     appleId: "user@example.com",
@@ -215,6 +215,31 @@ test("all-day calendar cards use the title line instead of ALLDAY", async () => 
   assert.match(card.readableLines[1], /SCHOOL/);
 });
 
+test("calendar cards compact standalone AND in titles to ampersands", async () => {
+  const provider = new ICloudCalendarProvider({
+    async getUpcomingEvents() {
+      return [{
+        id: "event",
+        provider: "icloud",
+        calendarId: "family",
+        title: "Mom and Dad Dinner",
+        startTime: "2026-06-09T18:00:00.000Z",
+        isAllDay: false
+      }];
+    }
+  });
+
+  const card = await provider.resolve({
+    id: "icloud-calendar-next-1",
+    enabled: true,
+    type: "icloud-calendar-next-event",
+    eventIndex: 0
+  });
+
+  assert.equal(card.readableLines[1], "MOM & DAD DIN");
+  assert.equal(card.matrixLines[1], "MOM & DAD DIN");
+});
+
 test("installing iCloud cards preserves Google and other rotation items", async () => {
   const storage = createMemoryStorage({
     rotationSeconds: 10,
@@ -243,6 +268,26 @@ test("installing iCloud cards preserves Google and other rotation items", async 
     "icloud-calendar-next-5"
   ]);
   assert.equal((await service.status()).eventShowCount, 5);
+});
+
+test("installing iCloud cards persists the chosen event show count", async () => {
+  const storage = createMemoryStorage();
+  storage.files.set("icloud-calendar.json", {
+    provider: "icloud",
+    calendarId: "icloud-family",
+    calendarName: "Family"
+  });
+  const service = new ICloudCalendarService({ storage });
+
+  await service.installRotationItems("icloud-family", 5);
+
+  assert.equal((await service.status()).eventShowCount, 5);
+  assert.deepEqual(storage.files.get("icloud-calendar.json"), {
+    provider: "icloud",
+    calendarId: "icloud-family",
+    calendarName: "Family",
+    eventShowCount: 5
+  });
 });
 
 function createMemoryStorage(initialConfig: DisplayItemsConfig = { rotationSeconds: 10, items: [] }) {

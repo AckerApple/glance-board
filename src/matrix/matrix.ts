@@ -36,7 +36,7 @@ export function renderNbaDisplayModeToMatrix(mode: NbaDisplayMode, game: Normali
 }
 
 export function renderDisplayCardToMatrix(card: NormalizedDisplayCard): PixelMatrix {
-  if (card.type === "sports-next-game") {
+  if (isUpcomingSportsCard(card)) {
     return renderNextGameCardToMatrix(card);
   }
 
@@ -48,7 +48,7 @@ export function renderDisplayCardToMatrix(card: NormalizedDisplayCard): PixelMat
 }
 
 export function renderDisplayCardToDisplayMatrix16x96(card: NormalizedDisplayCard): PixelMatrix16x96 {
-  if (card.type === "sports-next-game") {
+  if (isUpcomingSportsCard(card)) {
     return renderNextGameCardToMatrix16x96(card);
   }
   if (card.type === "date-time" || card.type === "google-calendar-next-event" || card.type === "icloud-calendar-next-event") {
@@ -65,6 +65,10 @@ export function renderDisplayCardToDisplayMatrix16x96(card: NormalizedDisplayCar
   }
 
   return renderTextCardToMatrix16x96(card);
+}
+
+function isUpcomingSportsCard(card: NormalizedDisplayCard): boolean {
+  return card.type === "sports-next-game" || (card.type === "sports-live-score" && card.game?.status === "scheduled");
 }
 
 export function renderNbaGameToDisplayMatrix16x96(game: NormalizedGameScore): PixelMatrix16x96 {
@@ -268,7 +272,14 @@ function renderDateTimeCardToMatrix16x96(card: NormalizedDisplayCard): PixelMatr
 
   drawCalendarIcon16x96(matrix, card.dateTime?.scheduledDate ?? card.calendar?.event?.startTime);
   drawText16x96(matrix, fitDisplayLine(line1, 13), 18, 0, "orange");
-  drawText16x96(matrix, fitDisplayLine(line2, 13), 18, 8, "white");
+  drawText16x96(
+    matrix,
+    fitDisplayLine(line2, 13, { preserveAmpersand: Boolean(card.calendar) }),
+    18,
+    8,
+    "white",
+    { preserveAmpersand: Boolean(card.calendar) }
+  );
   if (card.calendar?.isBirthday) drawCakeIcon16x96(matrix, 87, 0);
 
   return matrix;
@@ -375,6 +386,7 @@ function drawCakeIcon16x96(matrix: PixelMatrix16x96, x: number, y: number): void
   const pixels: Array<[number, number, PixelColor16x96]> = [
     [4, 0, "orange"],
     [4, 1, "yellow"],
+    [4, 2, "white"],
     [2, 3, "white"],
     [3, 3, "white"],
     [4, 3, "white"],

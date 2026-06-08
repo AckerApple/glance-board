@@ -3,6 +3,7 @@ import { availableCards } from "./display-utils.js";
 import {
   calendar$,
   hardware$,
+  icloudCalendar$,
   rotation$,
   updateCalendar,
   updateHardware,
@@ -326,6 +327,7 @@ async function refreshICloudCalendar(): Promise<void> {
   updateICloudCalendar({ busy: true });
   try {
     const status = await getJson<ICloudCalendarStatus>("/api/calendar/icloud/status");
+    updateICloudCalendar({ status });
     if (!status.connected) {
       updateICloudCalendar({
         status,
@@ -407,9 +409,12 @@ async function selectICloudCalendar(calendarId: string, calendarName: string, ev
 async function installICloudCalendarItems(calendarId: string, eventShowCount = 3): Promise<void> {
   updateICloudCalendar({ busy: true });
   try {
-    await postJson("/api/calendar/icloud/install-rotation-items", { calendarId, eventShowCount });
+    const payload = await postJson<{ status?: ICloudCalendarStatus }>("/api/calendar/icloud/install-rotation-items", { calendarId, eventShowCount });
     await refreshRotation();
-    updateICloudCalendar({ message: "iCloud Calendar rotation items installed." });
+    updateICloudCalendar({
+      status: payload.status ?? icloudCalendar$[0]?.status ?? {},
+      message: "iCloud Calendar rotation items installed."
+    });
   } catch (error) {
     updateICloudCalendar({ message: `iCloud rotation install failed: ${errorMessage(error)}` });
   } finally {

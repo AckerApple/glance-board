@@ -7,6 +7,11 @@ test("replaces unsupported matchup characters", () => {
   assert.equal(sanitizeDisplayText("A&B + C"), "A AND B PLUS C");
 });
 
+test("can preserve ampersands for compact display text", () => {
+  assert.equal(sanitizeDisplayText("A&B + C", " ", { preserveAmpersand: true }), "A & B PLUS C");
+  assert.equal(fitDisplayLine("A & B", 5, { preserveAmpersand: true }), "A & B");
+});
+
 test("fits sanitized text to the requested matrix length", () => {
   assert.equal(fitDisplayLine("NYK @ SAS", 8), "NYK AT S");
 });

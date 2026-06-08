@@ -34,10 +34,36 @@ export const ConfiguredItems = tag(() =>
               .class((_: unknown) => `item-chip ${active ? "active" : ""}`)
               .type("button")
               .disabled((_: unknown) => !item.resolved)
-              .onClick(() => actions.selectCard(item.id))("Show")
+              .onClick(() => actions.selectCard(item.id))("Show"),
+            div.class`item-freshness`(freshnessText(item))
           );
         })
       )
     );
   })
 );
+
+function freshnessText(item: { enabled: boolean; lastUpdated?: string; refreshIntervalSeconds?: number }): string {
+  if (!item.enabled) return "Not updating while disabled";
+  const ageMinutes = minutesSince(item.lastUpdated);
+  const updatedText = ageMinutes === undefined
+    ? "Last updated: pending"
+    : `Last updated: ${ageMinutes < 1 ? "just now" : `${ageMinutes} min ago`}`;
+  const intervalText = item.refreshIntervalSeconds
+    ? `updates every ${formatInterval(item.refreshIntervalSeconds)}`
+    : "update interval unknown";
+  return `${updatedText} · ${intervalText}`;
+}
+
+function minutesSince(value: string | undefined): number | undefined {
+  if (!value) return undefined;
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return undefined;
+  return Math.max(0, Math.floor((Date.now() - date.getTime()) / 60_000));
+}
+
+function formatInterval(seconds: number): string {
+  if (seconds < 60) return `${seconds}s`;
+  const minutes = Math.round(seconds / 60);
+  return `${minutes} min`;
+}

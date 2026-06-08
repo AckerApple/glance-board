@@ -26,7 +26,7 @@ export const HardwareControls = tag(() =>
         )
       ),
       label.class`intensity-control`(
-        span("Intensity ", strong(`${Math.round((state?.intensity ?? 1) * 100)}%`)),
+        span("Intensity ", strong(_=> `${Math.round((state?.intensity ?? 1) * 100)}%`)),
         input
           .type("range")
           .attr("min", "10")

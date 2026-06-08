@@ -103,8 +103,15 @@ export interface NormalizedDisplayCard {
 
 export interface RotationDisplayState {
   rotationSeconds: number;
+  refreshIntervalSeconds?: number;
   paused?: boolean;
-  items: Array<DisplayItemConfig & { resolved?: boolean; error?: string }>;
+  items: Array<DisplayItemConfig & {
+    resolved?: boolean;
+    error?: string;
+    lastUpdated?: string;
+    lastUpdatedAgeMinutes?: number;
+    refreshIntervalSeconds?: number;
+  }>;
   cards: NormalizedDisplayCard[];
   activeCard?: NormalizedDisplayCard;
   lastUpdated: string;

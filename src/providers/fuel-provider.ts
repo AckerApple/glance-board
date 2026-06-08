@@ -13,6 +13,11 @@ interface FuelResolved {
   debug: Record<string, unknown>;
   raw: {
     sourceUrl: string;
+    parsedPriceRow?: {
+      area: string;
+      regular: number;
+      diesel: number;
+    };
   };
 }
 
@@ -115,7 +120,12 @@ export class FuelProvider {
           cacheTtlMinutes: SUCCESS_CACHE_MS / 60_000
         },
         raw: {
-          sourceUrl: url.toString()
+          sourceUrl: url.toString(),
+          parsedPriceRow: {
+            area: prices.area,
+            regular: prices.regular,
+            diesel: prices.diesel
+          }
         }
       };
       this.cache.set(cacheKey, { result, expiresAt: now + SUCCESS_CACHE_MS });

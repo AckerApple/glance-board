@@ -24,7 +24,12 @@ test("resolves enabled items only and preserves equal rotation order", async () 
 
   const state = await engine.refresh();
   assert.equal(state.rotationSeconds, 10);
+  assert.equal(state.refreshIntervalSeconds, 15);
   assert.deepEqual(state.cards.map((card) => card.id), ["one", "two"]);
+  assert.equal(state.items.find((item) => item.id === "one")?.refreshIntervalSeconds, 15);
+  assert.equal(typeof state.items.find((item) => item.id === "one")?.lastUpdated, "string");
+  assert.equal(state.items.find((item) => item.id === "one")?.lastUpdatedAgeMinutes, 0);
+  assert.equal(state.items.find((item) => item.id === "disabled")?.lastUpdated, undefined);
   assert.equal(state.activeCard?.id, "one");
   assert.equal(engine.next()?.id, "two");
   assert.equal(engine.next()?.id, "one");

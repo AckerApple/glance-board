@@ -1,5 +1,5 @@
 import { getGlyph } from "./font5x7.js";
-import { sanitizeDisplayText } from "./text-sanitizer.js";
+import { sanitizeDisplayText, SanitizeDisplayTextOptions } from "./text-sanitizer.js";
 
 export const MATRIX_WIDTH_16X96 = 96;
 export const MATRIX_HEIGHT_16X96 = 16;
@@ -16,17 +16,25 @@ export function setPixel(matrix: PixelMatrix, x: number, y: number, value: Pixel
   matrix[y][x] = value;
 }
 
-export function drawText(matrix: PixelMatrix, text: string, x: number, y: number, color: PixelColor = "white"): void {
-  drawTextWithAdvance(matrix, text, x, y, color, characterAdvance);
+export function drawText(matrix: PixelMatrix, text: string, x: number, y: number, color: PixelColor = "white", options: SanitizeDisplayTextOptions = {}): void {
+  drawTextWithAdvance(matrix, text, x, y, color, characterAdvance, options);
 }
 
-export function drawTightText(matrix: PixelMatrix, text: string, x: number, y: number, color: PixelColor = "white"): void {
-  drawTextWithAdvance(matrix, text, x, y, color, () => 5);
+export function drawTightText(matrix: PixelMatrix, text: string, x: number, y: number, color: PixelColor = "white", options: SanitizeDisplayTextOptions = {}): void {
+  drawTextWithAdvance(matrix, text, x, y, color, () => 5, options);
 }
 
-function drawTextWithAdvance(matrix: PixelMatrix, text: string, x: number, y: number, color: PixelColor, advanceFor: (character: string) => number): void {
+function drawTextWithAdvance(
+  matrix: PixelMatrix,
+  text: string,
+  x: number,
+  y: number,
+  color: PixelColor,
+  advanceFor: (character: string) => number,
+  options: SanitizeDisplayTextOptions
+): void {
   let cursor = x;
-  for (const character of sanitizeDisplayText(text).toUpperCase()) {
+  for (const character of sanitizeDisplayText(text, " ", options).toUpperCase()) {
     const glyph = getGlyph(character);
     for (let row = 0; row < glyph.length; row += 1) {
       for (let col = 0; col < glyph[row].length; col += 1) {

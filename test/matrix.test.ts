@@ -87,4 +87,5 @@ test("renders a cake icon for birthday calendar events", () => {
 
   assert.ok(cakePixels.includes("purple"));
   assert.ok(cakePixels.includes("orange"));
+  assert.equal(matrix[2][91], "white");
 });

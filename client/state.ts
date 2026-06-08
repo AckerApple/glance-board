@@ -91,4 +91,16 @@ export function updateCalendar(patch: Partial<CalendarState>): void {
 
 export function updateICloudCalendar(patch: Partial<ICloudCalendarState>): void {
   icloudCalendar$[0] = { ...icloudCalendar$[0], ...patch };
+  pruneStaleICloudSections();
+}
+
+function pruneStaleICloudSections(): void {
+  if (typeof document === "undefined") return;
+  const prune = () => {
+    const sections = Array.from(document.querySelectorAll('[aria-labelledby="icloudCalendarTitle"]'));
+    for (const section of sections.slice(0, -1)) section.remove();
+  };
+  window.requestAnimationFrame(prune);
+  window.setTimeout(prune, 50);
+  window.setTimeout(prune, 250);
 }

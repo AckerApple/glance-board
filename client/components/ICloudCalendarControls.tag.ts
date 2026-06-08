@@ -39,6 +39,7 @@ export const ICloudCalendarControls = tag(() =>
           .type("email")
           .attr("autocomplete", "username")
           .attr("placeholder", "you@example.com")
+          .value((_: unknown) => status.appleId ?? "")
           .disabled((_: unknown) => Boolean(state?.busy))(),
         label.attr("for", "icloudAppPassword")("App-specific password"),
         input

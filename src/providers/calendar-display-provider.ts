@@ -1,4 +1,4 @@
-import { fitDisplayLine, sanitizeDisplayLines, sanitizeDisplayText } from "../matrix/text-sanitizer.js";
+import { fitDisplayLine, sanitizeDisplayText } from "../matrix/text-sanitizer.js";
 import { CalendarDisplayData, CalendarSourceType, DisplayItemConfig, NormalizedCalendarEvent } from "../rotation/types.js";
 
 export interface CalendarEventService {
@@ -21,7 +21,10 @@ export async function resolveCalendarDisplay(
     const timeLine = event.isAllDay ? "ALL DAY" : timeLabel;
     const isBirthday = isBirthdayEvent(event.title);
     const readableLines = [`${isBirthday ? "🎂 " : ""}${timeLine}`, shortTitle];
-    const matrixLines = sanitizeDisplayLines([timeLine, shortTitle]);
+    const matrixLines = [
+      sanitizeDisplayText(timeLine),
+      sanitizeCalendarTitle(shortTitle)
+    ];
     return {
       calendar: {
         sourceType,
@@ -35,7 +38,10 @@ export async function resolveCalendarDisplay(
         event
       },
       readableLines,
-      matrixLines: matrixLines.map((line) => fitDisplayLine(line, 13)),
+      matrixLines: [
+        fitDisplayLine(matrixLines[0], 13),
+        fitDisplayLine(matrixLines[1], 13, { preserveAmpersand: true })
+      ],
       debug: {
         provider: event.provider,
         calendarId: event.calendarId,
@@ -136,11 +142,15 @@ function formatTimeLabel(event: NormalizedCalendarEvent): string {
 }
 
 function shortEventTitle(title: string, length = 6): string {
-  const sanitized = sanitizeDisplayText(title);
+  const sanitized = sanitizeCalendarTitle(title);
   const words = sanitized.split(" ").filter(Boolean);
-  if (length > 6) return fitDisplayLine(sanitized || "EVENT", length);
+  if (length > 6) return fitDisplayLine(sanitized || "EVENT", length, { preserveAmpersand: true });
   const meaningful = words.find((word) => !["THE", "AND", "WITH", "FOR", "TO", "AT"].includes(word)) ?? words[0] ?? "EVENT";
   return fitDisplayLine(meaningful, length);
+}
+
+function sanitizeCalendarTitle(title: string): string {
+  return sanitizeDisplayText(title, "EVENT", { preserveAmpersand: true }).replace(/\bAND\b/g, "&");
 }
 
 function isBirthdayEvent(title: string): boolean {

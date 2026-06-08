@@ -33,7 +33,23 @@ export class SportsProvider {
     const scopedEvents = filterByConfig(config, allEvents);
     const game = selectCurrentFinalsGame(scopedEvents) ?? selectCurrentFinalsGame(allEvents);
 
-    if (!game) return noGameResult(config, { todayEvents: todayEvents.length, scheduleEvents: scheduleEvents.length });
+    if (!game) {
+      if (league === "nba") {
+        const nextGame = await this.resolveNextGame(config);
+        return {
+          ...nextGame,
+          debug: {
+            ...nextGame.debug,
+            fallback: "nba-live-score-to-next-game",
+            todayEvents: todayEvents.length,
+            scheduleEvents: scheduleEvents.length
+          },
+          raw: { today: todayRaw, schedule: scheduleRaw, fallback: nextGame.raw }
+        };
+      }
+
+      return noGameResult(config, { todayEvents: todayEvents.length, scheduleEvents: scheduleEvents.length });
+    }
 
     return {
       game,

@@ -3,6 +3,7 @@ import test from "node:test";
 import { DateTimeProvider } from "../src/providers/date-time-provider.js";
 import { FuelProvider } from "../src/providers/fuel-provider.js";
 import { MoonProvider } from "../src/providers/moon-provider.js";
+import { SportsProvider } from "../src/providers/sports-provider.js";
 
 test("date-time provider produces two display-safe lines", () => {
   const result = new DateTimeProvider().resolve(
@@ -60,4 +61,48 @@ test("fuel provider caches successful AAA lookups", async () => {
   await provider.resolve(config);
 
   assert.equal(fetchCount, 1);
+});
+
+test("NBA live score falls back to the upcoming game when no game is live", async () => {
+  const provider = new SportsProvider(async () => new Response(JSON.stringify({
+    events: [{
+      id: "nba-finals-next",
+      name: "NBA Finals - Boston Celtics at Miami Heat",
+      shortName: "BOS @ MIA",
+      date: "2099-06-15T00:00:00.000Z",
+      competitions: [{
+        status: {
+          type: {
+            state: "pre",
+            name: "STATUS_SCHEDULED",
+            description: "Scheduled"
+          }
+        },
+        competitors: [
+          {
+            homeAway: "away",
+            team: { abbreviation: "BOS", displayName: "Boston Celtics" }
+          },
+          {
+            homeAway: "home",
+            team: { abbreviation: "MIA", displayName: "Miami Heat" }
+          }
+        ],
+        notes: [{ headline: "NBA Finals" }]
+      }]
+    }]
+  }), { status: 200, headers: { "content-type": "application/json" } }) as unknown as Response);
+
+  const result = await provider.resolve({
+    id: "nba-finals-live",
+    enabled: true,
+    type: "sports-live-score",
+    league: "nba",
+    mode: "finals"
+  });
+
+  assert.equal(result.game?.status, "scheduled");
+  assert.equal(result.debug.fallback, "nba-live-score-to-next-game");
+  assert.equal(result.readableLines.includes("NO NBA"), false);
+  assert.equal(result.readableLines[1], "BOS AT MIA");
 });
