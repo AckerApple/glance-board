@@ -15,6 +15,9 @@ import { setDisplayItemCategory, setDisplayItemEnabled } from "../rotation/displ
 const publicDir = path.resolve(process.cwd(), process.env.GLANCEBOARD_PUBLIC_DIR ?? "public");
 const RECONNECT_BASE_DELAY_MS = 5_000;
 const RECONNECT_MAX_DELAY_MS = 60_000;
+const FAST_ROTATION_SECONDS = 3;
+
+type RotationPace = "normal" | "fast";
 
 export interface RotatingDisplayServer {
   url: string;
@@ -29,6 +32,9 @@ export async function startRotatingDisplayServer(port: number): Promise<Rotating
   let rotationPaused = false;
   let rotationTimer: NodeJS.Timeout | undefined;
   let rotationTickInFlight = false;
+  let rotationPace: RotationPace = "normal";
+  let pendingRotationPace: RotationPace | undefined;
+  let seenCardIdsThisPass = new Set<string>();
   let reconnectTimer: NodeJS.Timeout | undefined;
   let reconnectAttempts = 0;
   let reconnectInFlight = false;
@@ -49,9 +55,11 @@ export async function startRotatingDisplayServer(port: number): Promise<Rotating
   };
 
   const scheduleReconnect = (delayMs = reconnectDelayMs(reconnectAttempts)) => {
-    stopReconnect();
-    if (!autoReconnectEnabled || display.isConnected()) return;
+    if (!autoReconnectEnabled || display.isConnected() || reconnectInFlight) return;
+    if (reconnectTimer) return;
+    log("🔌", `reconnect in ${formatDelay(delayMs)}`);
     reconnectTimer = setTimeout(() => {
+      reconnectTimer = undefined;
       void reconnectDisplay();
     }, delayMs);
   };
@@ -60,18 +68,21 @@ export async function startRotatingDisplayServer(port: number): Promise<Rotating
     if (!autoReconnectEnabled || reconnectInFlight || display.isConnected()) return;
     reconnectInFlight = true;
     try {
+      log("🔌", "connecting");
       const status = await display.connect();
       if (status.status === "connected") {
+        log("✅ ⚡️", "screen connected");
         reconnectAttempts = 0;
         scheduleBackendRotation();
         return;
       }
 
       reconnectAttempts += 1;
+      log("⚠️", status.lastMessage ?? "connect failed");
       scheduleReconnect();
     } catch (error) {
       reconnectAttempts += 1;
-      console.warn("[Display] Auto-reconnect failed", error instanceof Error ? error.message : error);
+      log("⚠️", error instanceof Error ? error.message : String(error));
       scheduleReconnect();
     } finally {
       reconnectInFlight = false;
@@ -89,17 +100,31 @@ export async function startRotatingDisplayServer(port: number): Promise<Rotating
   };
 
   display.onUnexpectedDisconnect(() => {
+    log("⚠️", "screen disconnected");
     stopBackendRotation();
     if (autoReconnectEnabled) scheduleReconnect(0);
   });
 
   const scheduleBackendRotation = (delayMs = 0) => {
     stopBackendRotation();
-    if (!display.isAutoSendEnabled() || rotationPaused) return;
+    if (rotationTickInFlight) {
+      log("⏭️", "rotation busy");
+      return;
+    }
+    if (!display.isAutoSendEnabled()) {
+      log("⏸️", "rotation off");
+      return;
+    }
+    if (rotationPaused) {
+      log("⏸️", "rotation paused");
+      return;
+    }
     if (!display.isReadyToSend()) {
+      log("🔌", "waiting for screen");
       scheduleReconnect(0);
       return;
     }
+    log("⏱️", `rotate in ${formatDelay(delayMs)}`);
     rotationTimer = setTimeout(() => {
       void tickBackendRotation();
     }, delayMs);
@@ -107,6 +132,7 @@ export async function startRotatingDisplayServer(port: number): Promise<Rotating
 
   const tickBackendRotation = async () => {
     if (rotationTickInFlight || !display.isAutoSendEnabled() || rotationPaused || !display.isReadyToSend()) {
+      log("⏭️", rotationSkipReason(rotationTickInFlight, display.isAutoSendEnabled(), rotationPaused, display.isReadyToSend()));
       if (!display.isReadyToSend()) scheduleReconnect(0);
       scheduleBackendRotation(1000);
       return;
@@ -114,6 +140,7 @@ export async function startRotatingDisplayServer(port: number): Promise<Rotating
 
     rotationTickInFlight = true;
     try {
+      applyPendingRotationPace();
       const [state, rotation] = await Promise.all([fetchNbaDisplayState(), rotationEngine.refresh()]);
       latestState = state;
       latestRotation = rotation;
@@ -122,22 +149,51 @@ export async function startRotatingDisplayServer(port: number): Promise<Rotating
       if (card) {
         rotation.activeCard = card;
         activeCardId = card.id;
+        log("✏️", currentCard && currentCard.id !== card.id ? `${currentCard.title} → ${card.title}` : card.title);
         const status = await display.sendCardTransition(currentCard?.id === card.id ? undefined : currentCard, card);
+        log(status.status === "error" ? "⚠️" : "✅", status.lastMessage ?? card.title);
         if (status.status === "error") scheduleReconnect(0);
+        else updateRotationPass(card, rotation.cards);
+      } else {
+        log("⚠️", "no cards");
       }
       latestRotation = { ...rotation, paused: rotationPaused };
     } catch (error) {
-      console.warn("[Rotation] Backend auto-send tick failed", error instanceof Error ? error.message : error);
+      log("⚠️", error instanceof Error ? error.message : String(error));
     } finally {
       rotationTickInFlight = false;
-      const seconds = latestRotation?.rotationSeconds ?? 10;
+      const seconds = rotationDelaySeconds(latestRotation?.rotationSeconds ?? 10);
       scheduleBackendRotation(Math.max(1, seconds) * 1000);
     }
+  };
+
+  const applyPendingRotationPace = () => {
+    if (!pendingRotationPace) return;
+    rotationPace = pendingRotationPace;
+    pendingRotationPace = undefined;
+    log(rotationPace === "fast" ? "⚡️" : "⏱️", `${rotationPace} pass`);
+  };
+
+  const updateRotationPass = (card: NormalizedDisplayCard, cards: NormalizedDisplayCard[]) => {
+    if (cards.length <= 1) return;
+    const currentIds = new Set(cards.map((candidate) => candidate.id));
+    seenCardIdsThisPass = new Set([...seenCardIdsThisPass].filter((id) => currentIds.has(id)));
+    seenCardIdsThisPass.add(card.id);
+
+    if (seenCardIdsThisPass.size < cards.length) return;
+    seenCardIdsThisPass = new Set();
+    pendingRotationPace = rotationPace === "normal" ? "fast" : "normal";
+    log("🔁", `next pass ${pendingRotationPace === "fast" ? `${FAST_ROTATION_SECONDS}s` : `${latestRotation?.rotationSeconds ?? 10}s`}`);
+  };
+
+  const rotationDelaySeconds = (normalSeconds: number) => {
+    return rotationPace === "fast" ? FAST_ROTATION_SECONDS : normalSeconds;
   };
 
   const settings = await browserSettings.get();
   display.setIntensity(settings.displayIntensity);
   display.setAutoSend(settings.autoSendRotation);
+  log(settings.autoSendRotation ? "▶️" : "⏸️", `auto-send ${settings.autoSendRotation ? "on" : "off"}`);
   if (settings.autoSendRotation) {
     enableAutoReconnect();
     scheduleBackendRotation();
@@ -338,6 +394,23 @@ export async function startRotatingDisplayServer(port: number): Promise<Rotating
 
 function reconnectDelayMs(attempts: number): number {
   return Math.min(RECONNECT_MAX_DELAY_MS, RECONNECT_BASE_DELAY_MS * 2 ** Math.min(attempts, 4));
+}
+
+function log(icon: string, message: string): void {
+  console.log(`${icon} ${message}`);
+}
+
+function formatDelay(delayMs: number): string {
+  if (delayMs <= 0) return "now";
+  return `${Math.round(delayMs / 1000)}s`;
+}
+
+function rotationSkipReason(inFlight: boolean, autoSend: boolean, paused: boolean, ready: boolean): string {
+  if (inFlight) return "tick busy";
+  if (!autoSend) return "rotation off";
+  if (paused) return "rotation paused";
+  if (!ready) return "screen not ready";
+  return "tick skipped";
 }
 
 function invalidateCalendarRotation(rotationEngine: RotationEngine): void {

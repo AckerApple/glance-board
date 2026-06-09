@@ -8,7 +8,7 @@ export interface BrowserFormSettings {
 }
 
 const DEFAULT_SETTINGS: BrowserFormSettings = {
-  autoSendRotation: false,
+  autoSendRotation: true,
   displayIntensity: 1
 };
 
@@ -40,7 +40,7 @@ export class BrowserSettingsService {
 function normalizeSettings(value: Partial<BrowserFormSettings>): BrowserFormSettings {
   const intensity = Number(value.displayIntensity);
   return {
-    autoSendRotation: Boolean(value.autoSendRotation),
+    autoSendRotation: value.autoSendRotation ?? DEFAULT_SETTINGS.autoSendRotation,
     displayIntensity: Number.isFinite(intensity) ? Math.max(0.1, Math.min(1, intensity)) : DEFAULT_SETTINGS.displayIntensity
   };
 }

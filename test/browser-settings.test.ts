@@ -13,6 +13,11 @@ test("browser settings default and normalize persisted form values", async () =>
     }
   });
 
+  assert.deepEqual(await service.get(), {
+    autoSendRotation: true,
+    displayIntensity: 1
+  });
+
   const saved = await service.save({
     autoSendRotation: true,
     displayIntensity: 2
@@ -23,4 +28,6 @@ test("browser settings default and normalize persisted form values", async () =>
     displayIntensity: 1
   });
   assert.deepEqual(await service.get(), saved);
+
+  assert.equal((await service.save({ autoSendRotation: false })).autoSendRotation, false);
 });

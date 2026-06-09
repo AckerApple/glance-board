@@ -69,9 +69,24 @@ export type WritableCharacteristic = {
   reasons: string[];
 };
 
+type UploadTimingOptions = {
+  packetDelayMs?: number;
+  settleMs?: number;
+  subscribe?: boolean;
+  writeDelayMs?: number;
+};
+
+const ANIMATION_UPLOAD_OPTIONS: UploadTimingOptions = {
+  packetDelayMs: 0,
+  settleMs: 0,
+  subscribe: false,
+  writeDelayMs: 0
+};
+
 export class CoolLedUxDisplay {
   private peripheral: Peripheral | undefined;
   private services: Service[] = [];
+  private writable: WritableCharacteristic | undefined;
   intensity = 1;
 
   constructor(private readonly options: { deviceName: string; deviceId?: string; width: number; height: number; onDisconnect?: () => void }) {}
@@ -104,16 +119,17 @@ export class CoolLedUxDisplay {
   async connect(): Promise<void> {
     if (this.peripheral?.state === "connected") return;
     const peripheral = await findPeripheral(this.options);
-    console.log(`Connecting to id=${peripheral.id} name=${peripheral.advertisement.localName ?? "n/a"} rssi=${peripheral.rssi}`);
+    console.log(`🔌 connect ${peripheral.advertisement.localName ?? peripheral.id} rssi=${peripheral.rssi}`);
     await connectDiscoveredPeripheral(peripheral);
     this.peripheral = peripheral;
     peripheral.once("disconnect", () => {
       if (this.peripheral?.id !== peripheral.id) return;
       this.peripheral = undefined;
       this.services = [];
+      this.writable = undefined;
       this.options.onDisconnect?.();
     });
-    console.log(`Connected peripheral id=${this.peripheral.id} name=${this.peripheral.advertisement.localName ?? "n/a"}`);
+    console.log(`✅ ⚡️ connected ${this.peripheral.advertisement.localName ?? this.peripheral.id}`);
   }
 
   async disconnect(): Promise<void> {
@@ -121,6 +137,7 @@ export class CoolLedUxDisplay {
     await disconnectQuietly(this.peripheral);
     this.peripheral = undefined;
     this.services = [];
+    this.writable = undefined;
   }
 
   isConnected(): boolean {
@@ -182,47 +199,69 @@ export class CoolLedUxDisplay {
     await this.sendUpload(buildMatrixFramesProgramUpload(matrices, this.intensity), label);
   }
 
-  private async sendUpload(upload: CoolLedUxUpload, label: string): Promise<void> {
-    await this.connect();
-    const writable = await this.getWritableCharacteristics();
-    if (writable.length === 0) throw new Error("No writable BLE characteristics were discovered on the display.");
+  async sendMatrixSequence(matrices: PixelMatrix[], label = "matrix animation", frameDelayMs = 70): Promise<void> {
+    if (matrices.length === 0) return;
+    for (const matrix of matrices) assertMatrix16x96(matrix);
 
-    const candidate = writable[0];
-    console.log(`Likely write characteristic service=${candidate.service.uuid} char=${candidate.characteristic.uuid}`);
-    console.log(`Reason: ${candidate.reasons.join("; ")}`);
+    console.log(`🎞️ ${label} frames=${matrices.length} delay=${frameDelayMs}ms`);
+    const uploads = matrices.map((matrix) => buildMatrixProgramUpload(matrix, this.intensity));
+    for (let index = 0; index < uploads.length; index += 1) {
+      await this.sendUpload(uploads[index], `${label} ${index + 1}/${uploads.length}`, ANIMATION_UPLOAD_OPTIONS);
+      if (index < uploads.length - 1) await sleepMs(frameDelayMs);
+    }
+  }
+
+  async confirmMatrix(matrix: PixelMatrix, label = "matrix confirm", delayMs = 500): Promise<void> {
+    assertMatrix16x96(matrix);
+    if (delayMs > 0) await sleepMs(delayMs);
+    console.log(`🔁 confirm ${label}`);
+    await this.sendUpload(buildMatrixProgramUpload(matrix, this.intensity), label, ANIMATION_UPLOAD_OPTIONS);
+  }
+
+  private async sendUpload(upload: CoolLedUxUpload, label: string, options: UploadTimingOptions = {}): Promise<void> {
+    await this.connect();
+    const candidate = await this.getWritableCharacteristic();
+    console.log(`✏️ char ${candidate.service.uuid}/${candidate.characteristic.uuid}`);
 
     const notifications: Buffer<ArrayBufferLike>[] = [];
     let notificationBuffer: Buffer<ArrayBufferLike> = Buffer.alloc(0);
-    if (canNotify(candidate.characteristic)) {
-      candidate.characteristic.on("data", (data) => {
+    let onData: ((data: Buffer) => void) | undefined;
+    if (options.subscribe !== false && canNotify(candidate.characteristic)) {
+      onData = (data) => {
         notificationBuffer = Buffer.concat([notificationBuffer, data]);
         const parsed = parseStreamFramesFromBuffer(notificationBuffer);
         notificationBuffer = parsed.remaining;
         for (const frame of parsed.frames) {
           notifications.push(frame);
           const view = byteView(frame);
-          console.log(`Protocol notification len=${frame.length} utf8=${view.utf8 ?? "n/a"} dec=[${view.decimal.join(",")}]`);
+          console.log(`📨 ${view.decimal.join(",")}`);
         }
-      });
+      };
+      candidate.characteristic.on("data", onData);
       await subscribeCharacteristic(candidate.characteristic);
     }
 
-    console.log(
-      `CoolLEDUX upload: raw=${upload.rawProgramLength} compressed=${upload.compressedLength} compressed=${upload.compressed} packets=${upload.packets.length}`
-    );
-    for (let packetIndex = 0; packetIndex < upload.packets.length; packetIndex += 1) {
-      const packet = upload.packets[packetIndex];
-      const bleWrites = splitBleWrites(packet, 20);
-      console.log(`Protocol packet ${packetIndex + 1}/${upload.packets.length}: frameBytes=${packet.length} bleWrites=${bleWrites.length}`);
-      for (const chunk of bleWrites) {
-        await writeCharacteristic(candidate.characteristic, chunk, true);
-        await sleepMs(50);
+    console.log(`📤 upload ${upload.compressedLength}B/${upload.rawProgramLength}B packets=${upload.packets.length}`);
+    try {
+      const writeDelayMs = options.writeDelayMs ?? 50;
+      const packetDelayMs = options.packetDelayMs ?? 300;
+      for (let packetIndex = 0; packetIndex < upload.packets.length; packetIndex += 1) {
+        const packet = upload.packets[packetIndex];
+        const bleWrites = splitBleWrites(packet, 20);
+        console.log(`📦 ${packetIndex + 1}/${upload.packets.length} ${packet.length}B ${bleWrites.length} writes`);
+        for (const chunk of bleWrites) {
+          await writeCharacteristic(candidate.characteristic, chunk, true);
+          if (writeDelayMs > 0) await sleepMs(writeDelayMs);
+        }
+        if (packetDelayMs > 0) await sleepMs(packetDelayMs);
       }
-      await sleepMs(300);
-    }
 
-    await new Promise((resolve) => setTimeout(resolve, 3000));
-    console.log(`Protocol upload completed for "${label}". Notification count after write: ${notifications.length}.`);
+      const settleMs = options.settleMs ?? 3000;
+      if (settleMs > 0) await new Promise((resolve) => setTimeout(resolve, settleMs));
+      console.log(`✅ "${label}" notifications=${notifications.length}`);
+    } finally {
+      if (onData) candidate.characteristic.removeListener("data", onData);
+    }
   }
 
   async probe(): Promise<WritableCharacteristic[]> {
@@ -258,6 +297,14 @@ export class CoolLedUxDisplay {
     }
 
     return candidates.sort((a, b) => b.score - a.score);
+  }
+
+  private async getWritableCharacteristic(): Promise<WritableCharacteristic> {
+    if (this.writable && this.peripheral?.state === "connected") return this.writable;
+    const writable = await this.getWritableCharacteristics();
+    if (writable.length === 0) throw new Error("No writable BLE characteristics were discovered on the display.");
+    this.writable = writable[0];
+    return this.writable;
   }
 
   private async inspectCharacteristic(serviceUuid: string, characteristic: Characteristic): Promise<CharacteristicInspection> {

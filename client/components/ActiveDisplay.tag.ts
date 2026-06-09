@@ -1,7 +1,7 @@
 import { button, canvas, details, div, h2, h3, p, pre, section, span, strong, subscribe, summary, tag } from "taggedjs";
 import { actions } from "../controller.js";
 import { formatGameDetails, visibleCard } from "../display-utils.js";
-import { scheduleMatrixDraw } from "../matrix-canvas.js";
+import { scheduleMatrixTransitionDraw } from "../matrix-canvas.js";
 import { hardware$, rotation$ } from "../state.js";
 import type { DisplayCard } from "../types.js";
 
@@ -13,7 +13,7 @@ export const ActiveDisplay = tag(() =>
       const card = visibleCard(state?.payload, state?.currentCardId);
       const matrix = card?.dotMatrix ?? state?.payload?.dotMatrix ?? [];
       const progress = Math.round((state?.progress ?? 1) * 100);
-      scheduleMatrixDraw(MATRIX_ID, matrix, hardware?.intensity ?? 1);
+      scheduleMatrixTransitionDraw(MATRIX_ID, card?.id, matrix, hardware?.intensity ?? 1);
 
       return [
         section.attr("aria-labelledby", "matrixTitle")(

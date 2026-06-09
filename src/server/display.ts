@@ -5,6 +5,9 @@ import { NbaDisplayMode, NormalizedDisplayCard, NormalizedGameScore } from "../r
 
 export type DotMatrixConnectionStatus = "idle" | "connecting" | "connected" | "sending" | "error";
 
+const TRANSITION_FRAME_DELAY_MS = 70;
+const FINAL_FRAME_CONFIRM_DELAY_MS = 500;
+
 export interface DotMatrixStatus {
   status: DotMatrixConnectionStatus;
   deviceName: string;
@@ -55,7 +58,7 @@ export class DotMatrixController {
 
   setAutoSend(enabled: boolean): DotMatrixStatus {
     this.autoSend = enabled;
-    this.lastMessage = enabled ? "Auto-send enabled" : "Auto-send disabled";
+    this.lastMessage = enabled ? "▶️ Auto-send on" : "⏸️ Auto-send off";
     return this.snapshot();
   }
 
@@ -80,7 +83,7 @@ export class DotMatrixController {
   refreshConnectionStatus(): DotMatrixStatus {
     if (this.status === "connected" && !this.display.isConnected()) {
       this.status = "error";
-      this.lastMessage = "Dot matrix display disconnected unexpectedly";
+      this.lastMessage = "⚠️ Screen disconnected";
     }
     return this.snapshot();
   }
@@ -88,7 +91,7 @@ export class DotMatrixController {
   setIntensity(intensity: number): DotMatrixStatus {
     this.intensity = normalizeIntensity(intensity);
     this.display.intensity = this.intensity;
-    this.lastMessage = `Intensity set to ${Math.round(this.intensity * 100)}%`;
+    this.lastMessage = `💡 Intensity ${Math.round(this.intensity * 100)}%`;
     return this.snapshot();
   }
 
@@ -108,10 +111,10 @@ export class DotMatrixController {
       if (this.status === "connected") return this.snapshot();
       this.manualDisconnectInFlight = false;
       this.status = "connecting";
-      this.lastMessage = "Connecting to dot matrix display...";
+      this.lastMessage = "🔌 Connecting";
       await this.display.connect();
       this.status = "connected";
-      this.lastMessage = "Connected to dot matrix display";
+      this.lastMessage = "✅ ⚡️ Screen connected";
     } catch (error) {
       await this.display.disconnect().catch(() => undefined);
       this.status = "error";
@@ -126,7 +129,7 @@ export class DotMatrixController {
     try {
       await this.display.disconnect();
       this.status = "idle";
-      this.lastMessage = "Disconnected";
+      this.lastMessage = "⏹️ Disconnected";
       return this.snapshot();
     } finally {
       this.manualDisconnectInFlight = false;
@@ -136,11 +139,11 @@ export class DotMatrixController {
   async sendGame(game: NormalizedGameScore, mode: NbaDisplayMode = "live_score"): Promise<DotMatrixStatus> {
     try {
       this.status = "sending";
-      this.lastMessage = "Sending NBA score to dot matrix...";
+      this.lastMessage = "✏️ NBA score";
       await this.display.sendMatrix(renderNbaDisplayModeToDisplayMatrix16x96(mode, game), game.displayLines.join(" "));
       this.status = "connected";
       this.lastSentAt = new Date().toISOString();
-      this.lastMessage = "Sent NBA score to dot matrix";
+      this.lastMessage = "✅ NBA score sent";
     } catch (error) {
       await this.display.disconnect().catch(() => undefined);
       this.status = "error";
@@ -153,11 +156,11 @@ export class DotMatrixController {
   async sendCard(card: NormalizedDisplayCard): Promise<DotMatrixStatus> {
     try {
       this.status = "sending";
-      this.lastMessage = `Sending ${card.title} to dot matrix...`;
+      this.lastMessage = `✏️ ${card.title}`;
       await this.display.sendMatrix(renderDisplayCardToDisplayMatrix16x96(card), card.readableLines.join(" "));
       this.status = "connected";
       this.lastSentAt = new Date().toISOString();
-      this.lastMessage = `Sent ${card.title} to dot matrix`;
+      this.lastMessage = `✅ ${card.title}`;
     } catch (error) {
       await this.display.disconnect().catch(() => undefined);
       this.status = "error";
@@ -172,16 +175,20 @@ export class DotMatrixController {
 
     try {
       this.status = "sending";
-      this.lastMessage = `Animating ${next.title} to dot matrix...`;
+      this.lastMessage = `✏️ ${current.title} → ${next.title}`;
+      const currentMatrix = renderDisplayCardToDisplayMatrix16x96(current);
+      const nextMatrix = renderDisplayCardToDisplayMatrix16x96(next);
       const frames = buildScrollDownFrames(
-        renderDisplayCardToDisplayMatrix16x96(current),
-        renderDisplayCardToDisplayMatrix16x96(next),
-        { durationMs: 2_000, fps: 8 }
+        currentMatrix,
+        nextMatrix,
+        { durationMs: 560, fps: 14 }
       );
-      await this.display.sendMatrices(frames, `${current.title} to ${next.title}`);
+      const transitionFrames = frames.slice(1);
+      await this.display.sendMatrixSequence(transitionFrames, `${current.title} → ${next.title}`, TRANSITION_FRAME_DELAY_MS);
+      await this.display.confirmMatrix(nextMatrix, `${next.title} confirm`, FINAL_FRAME_CONFIRM_DELAY_MS);
       this.status = "connected";
       this.lastSentAt = new Date().toISOString();
-      this.lastMessage = `Sent ${next.title} to dot matrix`;
+      this.lastMessage = `✅ ${next.title}`;
     } catch (error) {
       await this.display.disconnect().catch(() => undefined);
       this.status = "error";
@@ -194,7 +201,7 @@ export class DotMatrixController {
   private handleUnexpectedDisconnect(): void {
     if (this.manualDisconnectInFlight || this.status === "idle") return;
     this.status = "error";
-    this.lastMessage = "Dot matrix display disconnected unexpectedly; reconnect pending";
+    this.lastMessage = "⚠️ Screen disconnected; reconnect pending";
     const status = this.snapshot();
     for (const listener of this.unexpectedDisconnectListeners) listener(status);
   }

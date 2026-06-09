@@ -5,11 +5,10 @@ const port = portArg ? Number(portArg.split("=")[1]) : 3010;
 
 async function main(): Promise<void> {
   const server = await startRotatingDisplayServer(port);
-  console.log("Glanceboard");
-  console.log(`Web UI: ${server.url}`);
-  console.log(`API: ${server.url}/api/rotation`);
-  console.log(`Legacy NBA API alias: ${server.url}/api/nba-score`);
-  console.log("Local-first data fetching and display rotation are running.");
+  console.log("🟢 Glanceboard");
+  console.log(`🌐 ${server.url}`);
+  console.log(`🔁 ${server.url}/api/rotation`);
+  console.log("▶️ backend rotation running when auto-send is on");
 
   const shutdown = async () => {
     await server.close();
