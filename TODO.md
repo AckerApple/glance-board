@@ -1,37 +1,34 @@
 # TODO
 
-1. The backend still seems to connected to the front end in terms of being able to update the display
-2. On the browser display the "16x96 Dot Matrix Preview" needs to be at the top of the page just before "⚙️ Configured Items"
-3. On the weather rotation, lets display the Humidtity down at bottom right
-  - Instead of "H46" use "46%" for humidity
-4. On the weather display rotation could we display the low and high temp along with current
-  2.a. maybe as "80F L78* H84*" where stars are intended to be degree dots indicating Low of 78 degrees
-5. Is it possible that if the weather is sunny no clouds that the dot matrix could have a sun icon instead of the white cloud
-6. Many items do not need to update every 15 seconds
-  - ICal can update every 5 minutes
-  - NBA, NHL, NFL next game can update every 30 minutes
-  - Moonphase every 1 hour
-  - local weather every 5 minutes
-  - current date time every 45 seconds
-  - Average gas prices every 15 minutes
+1. Continue sectioning rotations by category.
+  - Examples: Sports, ${calendarName}, Local Info (weather gas)
+  - Those categories should have dot matrix icons associated
+  - Category JSON support and assignment dropdown exist.
+  - We still need grouped/sectioned display of configured items.
+  - For display I recommend drag drop. Meaning you add a category by maybe selecting from modal and then that becomes a section that you can drag drop the rotation displays into
+2. The new categories with matching dot matrix display titles should display before each category for 2 seconds only. It will animate in and then show for two seconds and animate out
+  - Fx in is 2 seconds, holds for 2 seconds, moves to the first rotation of its grouping in 2s
+  - Category JSON support exists; category title card config still needs to be added.
+3. After all display rotation have been gone through, lets have a quicker glance cycke if 2s per slide
+  - Perhaps when the last slide becomes now the first slide (which should be a category change) we instead show a dot matrix title screen of "2s per quick recap"
+  - Every slide is shown for two seconds. Include the animation
+  - animate in for 2s, show for 2 seconds, 2 seconds rotate into next screen
+  - when the last rotation is reached go back to the default rotation per slide
+4. The reconnect logic appears not to be working
+  - The backend needs to detect or test for loss of connection
+  - reconnect
+5. I think its time to move into a web socket driven marriage between front end and backend
+  - This request comes from seeing the browser display not matching the dot matrix display
+  - When we move to this it maybe become difficult to have animations accurate on the browser display
+  - Decide if sacrifices need to be made for browser dot matrix display OR if we can just fake it another way or maybe its easier than I think
 
-
-## Make This Repo Laptop-Independent
+## Remaining Laptop-Independence Follow-ups
 
 - Replace the local `taggedjs` dependency in `package.json`.
   - Current dependency: `taggedjs: "file:../../web/taggedjs/main/dist"`.
+  - `package-lock.json` still resolves `taggedjs` from `../../web/taggedjs/main/dist`.
   - Publish/use a real npm package version, a git URL dependency, or vendor a stable package artifact.
   - Regenerate `package-lock.json` after the dependency is no longer tied to `/Users/ackerapple/projects/web`.
-
-- Audit shared code lineage from earlier BigScoring work.
-  - `README.md` says Glanceboard owns the matrix and hardware code, but this should be verified module by module.
-  - Confirm ESPN/sports formatting, matrix primitives, text sanitizer, and CoolLEDUX hardware code are either original here or intentionally copied with license/attribution notes.
-  - Move any truly shared logic into an npm package only if there is an actual maintenance benefit.
-
-- Document local config bootstrap.
-  - Provide a committed setup guide for creating `config/display-items.json` from `config/display-items.example.json`.
-  - Document all ignored local files and their purpose.
-  - Add validation/errors for missing config files so a fresh clone has actionable startup messages.
 
 - Remove hard-coded localhost assumptions where practical.
   - `vite.config.ts` proxies `/api` to `http://localhost:3010`.
@@ -42,19 +39,11 @@
   - Document macOS/Linux Bluetooth permissions and any `@abandonware/noble` system requirements.
   - Add a hardware-disabled mode for development on machines without BLE access.
 
-- Add environment setup documentation.
-  - Required Node version is `>=20`; add `.nvmrc` or `.node-version`.
-  - Document `npm install`, `npm run dev`, `npm run check`, `npm run build`, and `npm start` from a fresh clone.
-
 - Add example secret/config templates.
-  - Keep secrets ignored, but provide safe example JSON shapes for Google, iCloud, browser settings, and display items.
+  - `config/display-items.example.json` exists, but Google, iCloud, and browser settings do not have safe example JSON shapes yet.
   - Make it clear which files are generated by the UI and which are manually edited.
 
-- Verify deployment packaging.
-  - Confirm `npm run build` produces everything needed in `dist`.
-  - Confirm `npm start` works without `client/` source files being served directly.
-  - Consider adding a smoke test that starts the compiled server and hits `/api/rotation`.
-
 - Reduce repo-specific absolute-path risk.
+  - This is mostly covered by replacing the local `taggedjs` dependency.
   - Search should stay clean for `/Users/`, sibling project paths, and `file:` dependencies before release.
   - Keep `dist`, local config, logs, and generated artifacts out of Git.

@@ -10,7 +10,7 @@ import { BrowserSettingsService } from "../providers/browser-settings-service.js
 import { renderDisplayCardPreviewMatrix, renderNbaDisplayModeToMatrix, renderNbaGameToMatrix, renderNbaNextGameToMatrix } from "../matrix/matrix.js";
 import { RotationEngine } from "../rotation/rotation-engine.js";
 import { NbaDisplayMode, NbaDisplayState, NbaScoreResponse, NormalizedDisplayCard, NormalizedGameScore, RotationDisplayState } from "../rotation/types.js";
-import { setDisplayItemEnabled } from "../rotation/display-config.js";
+import { setDisplayItemCategory, setDisplayItemEnabled } from "../rotation/display-config.js";
 
 const publicDir = path.resolve(process.cwd(), process.env.GLANCEBOARD_PUBLIC_DIR ?? "public");
 const RECONNECT_BASE_DELAY_MS = 5_000;
@@ -88,6 +88,11 @@ export async function startRotatingDisplayServer(port: number): Promise<Rotating
     rotationTimer = undefined;
   };
 
+  display.onUnexpectedDisconnect(() => {
+    stopBackendRotation();
+    if (autoReconnectEnabled) scheduleReconnect(0);
+  });
+
   const scheduleBackendRotation = (delayMs = 0) => {
     stopBackendRotation();
     if (!display.isAutoSendEnabled() || rotationPaused) return;
@@ -112,11 +117,12 @@ export async function startRotatingDisplayServer(port: number): Promise<Rotating
       const [state, rotation] = await Promise.all([fetchNbaDisplayState(), rotationEngine.refresh()]);
       latestState = state;
       latestRotation = rotation;
+      const currentCard = activeCardId ? rotation.cards.find((candidate) => candidate.id === activeCardId) : undefined;
       const card = rotationEngine.next() ?? rotation.activeCard;
       if (card) {
         rotation.activeCard = card;
         activeCardId = card.id;
-        const status = await display.sendCard(card);
+        const status = await display.sendCardTransition(currentCard?.id === card.id ? undefined : currentCard, card);
         if (status.status === "error") scheduleReconnect(0);
       }
       latestRotation = { ...rotation, paused: rotationPaused };
@@ -132,12 +138,17 @@ export async function startRotatingDisplayServer(port: number): Promise<Rotating
   const settings = await browserSettings.get();
   display.setIntensity(settings.displayIntensity);
   display.setAutoSend(settings.autoSendRotation);
+  if (settings.autoSendRotation) {
+    enableAutoReconnect();
+    scheduleBackendRotation();
+  }
 
   const server = http.createServer(async (request, response) => {
     try {
       const url = new URL(request.url ?? "/", `http://${request.headers.host ?? "localhost"}`);
 
       if (url.pathname === "/api/rotation" || url.pathname === "/api/nba-score") {
+        if (url.searchParams.get("refresh") === "calendar") invalidateCalendarRotation(rotationEngine);
         const handled = await handleScoreApi(response, display, rotationEngine, activeCardId, rotationPaused);
         latestState = handled.legacyState;
         latestRotation = handled.rotation;
@@ -157,6 +168,25 @@ export async function startRotatingDisplayServer(port: number): Promise<Rotating
 
         await setDisplayItemEnabled(id, enabled);
         const handled = await handleScoreApi(response, display, rotationEngine, activeCardId === id && !enabled ? undefined : activeCardId, rotationPaused);
+        latestState = handled.legacyState;
+        latestRotation = handled.rotation;
+        activeCardId = handled.rotation.activeCard?.id;
+        scheduleBackendRotation();
+        return;
+      }
+
+      if (url.pathname === "/api/rotation/items/category" && request.method === "POST") {
+        const body = await readJsonBody(request);
+        const id = typeof body.id === "string" ? body.id : "";
+        const categoryId = typeof body.categoryId === "string" ? body.categoryId : "";
+        if (!id || !categoryId) {
+          response.writeHead(400, { "content-type": "application/json" });
+          response.end(JSON.stringify({ error: "id and categoryId are required" }));
+          return;
+        }
+
+        await setDisplayItemCategory(id, categoryId);
+        const handled = await handleScoreApi(response, display, rotationEngine, activeCardId, rotationPaused);
         latestState = handled.legacyState;
         latestRotation = handled.rotation;
         activeCardId = handled.rotation.activeCard?.id;
@@ -212,7 +242,9 @@ export async function startRotatingDisplayServer(port: number): Promise<Rotating
       }
 
       if (url.pathname === "/api/display/status") {
-        sendJson(response, display.snapshot());
+        const status = display.refreshConnectionStatus();
+        if (status.status === "error" && autoReconnectEnabled) scheduleReconnect(0);
+        sendJson(response, status);
         return;
       }
 
@@ -308,6 +340,10 @@ function reconnectDelayMs(attempts: number): number {
   return Math.min(RECONNECT_MAX_DELAY_MS, RECONNECT_BASE_DELAY_MS * 2 ** Math.min(attempts, 4));
 }
 
+function invalidateCalendarRotation(rotationEngine: RotationEngine): void {
+  rotationEngine.invalidate((item) => item.type === "google-calendar-next-event" || item.type === "icloud-calendar-next-event");
+}
+
 async function createViteDevServer() {
   if (process.env.GLANCEBOARD_VITE_DEV !== "true") return undefined;
 
@@ -388,6 +424,7 @@ async function handleICloudCalendarApi(
   if (url.pathname === "/api/calendar/icloud/events" && request.method === "GET") {
     const calendarId = url.searchParams.get("calendarId") ?? undefined;
     const limit = Number(url.searchParams.get("limit") ?? 3);
+    if (url.searchParams.get("refresh") === "1") icloudCalendar.clearCache(calendarId);
     sendJson(response, {
       events: await icloudCalendar.getUpcomingEvents(calendarId, Number.isFinite(limit) ? limit : 3)
     });

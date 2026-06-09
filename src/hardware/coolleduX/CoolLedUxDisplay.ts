@@ -22,7 +22,7 @@ import {
 } from "../ble-utils.js";
 import { sessionStamp, timestamp } from "../logging.js";
 import { assertMatrix16x96, PixelMatrix } from "../../matrix/core16x96.js";
-import { buildMatrixProgramUpload, parseStreamFramesFromBuffer, splitBleWrites } from "./coolleduXProtocol.js";
+import { buildMatrixFramesProgramUpload, buildMatrixProgramUpload, CoolLedUxUpload, parseStreamFramesFromBuffer, splitBleWrites } from "./coolleduXProtocol.js";
 
 export type DiscoveredDisplay = AdvertisementSnapshot & {
   matchReasons: string[];
@@ -74,7 +74,7 @@ export class CoolLedUxDisplay {
   private services: Service[] = [];
   intensity = 1;
 
-  constructor(private readonly options: { deviceName: string; deviceId?: string; width: number; height: number }) {}
+  constructor(private readonly options: { deviceName: string; deviceId?: string; width: number; height: number; onDisconnect?: () => void }) {}
 
   async scan(): Promise<DiscoveredDisplay[]> {
     await waitForPoweredOn();
@@ -107,6 +107,12 @@ export class CoolLedUxDisplay {
     console.log(`Connecting to id=${peripheral.id} name=${peripheral.advertisement.localName ?? "n/a"} rssi=${peripheral.rssi}`);
     await connectDiscoveredPeripheral(peripheral);
     this.peripheral = peripheral;
+    peripheral.once("disconnect", () => {
+      if (this.peripheral?.id !== peripheral.id) return;
+      this.peripheral = undefined;
+      this.services = [];
+      this.options.onDisconnect?.();
+    });
     console.log(`Connected peripheral id=${this.peripheral.id} name=${this.peripheral.advertisement.localName ?? "n/a"}`);
   }
 
@@ -115,6 +121,10 @@ export class CoolLedUxDisplay {
     await disconnectQuietly(this.peripheral);
     this.peripheral = undefined;
     this.services = [];
+  }
+
+  isConnected(): boolean {
+    return this.peripheral?.state === "connected";
   }
 
   async inspect(): Promise<InspectionResult> {
@@ -163,6 +173,16 @@ export class CoolLedUxDisplay {
 
   async sendMatrix(matrix: PixelMatrix, label = "matrix frame"): Promise<void> {
     assertMatrix16x96(matrix);
+    await this.sendUpload(buildMatrixProgramUpload(matrix, this.intensity), label);
+  }
+
+  async sendMatrices(matrices: PixelMatrix[], label = "matrix animation"): Promise<void> {
+    if (matrices.length === 0) throw new Error("At least one matrix frame is required.");
+    for (const matrix of matrices) assertMatrix16x96(matrix);
+    await this.sendUpload(buildMatrixFramesProgramUpload(matrices, this.intensity), label);
+  }
+
+  private async sendUpload(upload: CoolLedUxUpload, label: string): Promise<void> {
     await this.connect();
     const writable = await this.getWritableCharacteristics();
     if (writable.length === 0) throw new Error("No writable BLE characteristics were discovered on the display.");
@@ -187,7 +207,6 @@ export class CoolLedUxDisplay {
       await subscribeCharacteristic(candidate.characteristic);
     }
 
-    const upload = buildMatrixProgramUpload(matrix, this.intensity);
     console.log(
       `CoolLEDUX upload: raw=${upload.rawProgramLength} compressed=${upload.compressedLength} compressed=${upload.compressed} packets=${upload.packets.length}`
     );

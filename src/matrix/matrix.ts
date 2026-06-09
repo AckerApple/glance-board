@@ -251,17 +251,26 @@ function renderFuelCardToMatrix16x96(card: NormalizedDisplayCard): PixelMatrix16
 function renderWeatherCardToMatrix16x96(card: NormalizedDisplayCard): PixelMatrix16x96 {
   const matrix = createMatrix16x96();
   const temperature = card.weather?.temperature;
+  const lowTemperature = card.weather?.lowTemperature;
+  const highTemperature = card.weather?.highTemperature;
   const humidity = card.weather?.humidity;
   const rainNow = Boolean(card.weather?.rainNow);
   const blueCloud = rainNow || Boolean(card.weather?.rainWithinTwoHours);
   const [line1 = "", line2 = ""] = card.matrixLines;
-  const tempText = temperature === undefined ? line1.split(" ")[0] ?? "--F" : `${temperature}F`;
-  const humidityText = humidity === undefined ? line1.split(" ").slice(1).join(" ") || "H--" : `H${humidity}`;
+  const tempText = temperature === undefined
+    ? line1 || "--F L-- H--"
+    : `${temperature}F L${lowTemperature ?? "--"} H${highTemperature ?? "--"}`;
+  const humidityText = humidity === undefined ? "--%" : `${humidity}%`;
+  const rainText = (card.weather?.nextRain ?? line2.replace(/\s+\d+%$/, "")).trim();
 
-  drawWeatherCloudIcon(matrix, 1, 3, blueCloud, rainNow);
-  drawText16x96(matrix, fitDisplayLine(tempText, 5), 23, 0, "red");
-  drawText16x96(matrix, fitDisplayLine(humidityText, 5), 60, 0, "blue");
-  drawText16x96(matrix, fitDisplayLine(line2, 11), 23, 8, rainNow ? "blue" : "white");
+  if (card.weather?.isSunny) {
+    drawWeatherSunIcon(matrix, 2, 2);
+  } else {
+    drawWeatherCloudIcon(matrix, 1, 3, blueCloud, rainNow);
+  }
+  drawText16x96(matrix, fitDisplayLine(tempText, 12), 23, 0, "red");
+  drawText16x96(matrix, fitDisplayLine(rainText, 8), 23, 8, rainNow ? "blue" : "white");
+  drawText16x96(matrix, fitDisplayLine(humidityText, 4), 72, 8, "blue");
 
   return matrix;
 }
@@ -379,6 +388,62 @@ function drawWeatherCloudIcon(matrix: PixelMatrix16x96, x: number, y: number, bl
     [13, 10]
   ]) {
     setPixel16x96(matrix, x + px, y + py, "blue");
+  }
+}
+
+function drawWeatherSunIcon(matrix: PixelMatrix16x96, x: number, y: number): void {
+  const yellowPixels = [
+    [6, 0],
+    [6, 1],
+    [2, 2],
+    [10, 2],
+    [4, 3],
+    [5, 3],
+    [6, 3],
+    [7, 3],
+    [8, 3],
+    [3, 4],
+    [4, 4],
+    [5, 4],
+    [6, 4],
+    [7, 4],
+    [8, 4],
+    [9, 4],
+    [0, 5],
+    [1, 5],
+    [3, 5],
+    [4, 5],
+    [5, 5],
+    [6, 5],
+    [7, 5],
+    [8, 5],
+    [9, 5],
+    [11, 5],
+    [12, 5],
+    [3, 6],
+    [4, 6],
+    [5, 6],
+    [6, 6],
+    [7, 6],
+    [8, 6],
+    [9, 6],
+    [4, 7],
+    [5, 7],
+    [6, 7],
+    [7, 7],
+    [8, 7],
+    [2, 8],
+    [10, 8],
+    [6, 9],
+    [6, 10]
+  ];
+
+  for (const [px, py] of yellowPixels) {
+    setPixel16x96(matrix, x + px, y + py, "yellow");
+  }
+
+  for (const [px, py] of [[5, 5], [7, 5], [6, 6]]) {
+    setPixel16x96(matrix, x + px, y + py, "orange");
   }
 }
 

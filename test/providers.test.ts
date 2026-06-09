@@ -4,6 +4,7 @@ import { DateTimeProvider } from "../src/providers/date-time-provider.js";
 import { FuelProvider } from "../src/providers/fuel-provider.js";
 import { MoonProvider } from "../src/providers/moon-provider.js";
 import { SportsProvider } from "../src/providers/sports-provider.js";
+import { WeatherProvider } from "../src/providers/weather-provider.js";
 
 test("date-time provider produces two display-safe lines", () => {
   const result = new DateTimeProvider().resolve(
@@ -23,6 +24,43 @@ test("moon provider returns bounded illumination and future full moon distance",
   assert.ok(result.moon.illumination >= 0 && result.moon.illumination <= 1);
   assert.ok(result.moon.daysUntilFullMoon >= 0);
   assert.equal(result.matrixLines.length, 2);
+});
+
+test("weather provider includes current, low, high, humidity percent, and sunny signal", async () => {
+  const provider = new WeatherProvider(async () => new Response(JSON.stringify({
+    current: {
+      temperature_2m: 80.2,
+      relative_humidity_2m: 46,
+      precipitation: 0,
+      rain: 0,
+      cloud_cover: 5,
+      weather_code: 0
+    },
+    daily: {
+      temperature_2m_min: [78.1],
+      temperature_2m_max: [84.4]
+    },
+    hourly: {
+      time: [],
+      precipitation_probability: [],
+      precipitation: [],
+      rain: []
+    }
+  }), { status: 200, headers: { "content-type": "application/json" } }) as unknown as Response);
+
+  const result = await provider.resolve({
+    id: "local-weather",
+    enabled: true,
+    type: "weather-current",
+    zip: "33066"
+  });
+
+  assert.equal(result.weather.temperature, 80);
+  assert.equal(result.weather.lowTemperature, 78);
+  assert.equal(result.weather.highTemperature, 84);
+  assert.equal(result.weather.humidity, 46);
+  assert.equal(result.weather.isSunny, true);
+  assert.deepEqual(result.readableLines, ["80F L78 H84", "NO RAIN 72H 46%"]);
 });
 
 test("fuel provider maps Pompano Beach to the AAA Fort Lauderdale metro", async () => {

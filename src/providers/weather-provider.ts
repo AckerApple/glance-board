@@ -12,10 +12,15 @@ interface WeatherResolved {
   matrixLines: string[];
   weather: {
     temperature?: number;
+    lowTemperature?: number;
+    highTemperature?: number;
     humidity?: number;
     rainNow: boolean;
     rainWithinTwoHours: boolean;
     nextRain: string;
+    cloudCover?: number;
+    weatherCode?: number;
+    isSunny: boolean;
   };
   debug: Record<string, unknown>;
   raw?: unknown;
@@ -40,8 +45,9 @@ export class WeatherProvider {
     url.searchParams.set("temperature_unit", "fahrenheit");
     url.searchParams.set("timezone", "auto");
     url.searchParams.set("forecast_days", "3");
-    url.searchParams.set("current", "temperature_2m,relative_humidity_2m,precipitation,rain");
+    url.searchParams.set("current", "temperature_2m,relative_humidity_2m,precipitation,rain,cloud_cover,weather_code");
     url.searchParams.set("hourly", "precipitation_probability,precipitation,rain");
+    url.searchParams.set("daily", "temperature_2m_max,temperature_2m_min");
 
     const response = await this.fetchImpl(url.toString(), {
       headers: {
@@ -56,20 +62,33 @@ export class WeatherProvider {
     const raw = await response.json();
     const current = isRecord(raw.current) ? raw.current : {};
     const hourly = isRecord(raw.hourly) ? raw.hourly : {};
+    const daily = isRecord(raw.daily) ? raw.daily : {};
     const temp = roundNumber(current.temperature_2m);
+    const highTemperature = roundNumber(firstArrayValue(daily.temperature_2m_max));
+    const lowTemperature = roundNumber(firstArrayValue(daily.temperature_2m_min));
     const humidity = roundNumber(current.relative_humidity_2m);
     const rainNow = Number(current.precipitation ?? 0) > 0 || Number(current.rain ?? 0) > 0;
+    const cloudCover = roundNumber(current.cloud_cover);
+    const weatherCode = roundNumber(current.weather_code);
+    const isSunny = !rainNow && (weatherCode === 0 || weatherCode === 1) && (cloudCover ?? 100) <= 20;
     const rainForecast = findNextRain(hourly, rainNow);
 
-    const lines = sanitizeDisplayLines([`${temp ?? "--"}F H${humidity ?? "--"}`, rainForecast.label]);
+    const temperatureLine = `${temp ?? "--"}F L${lowTemperature ?? "--"} H${highTemperature ?? "--"}`;
+    const humidityLine = `${rainForecast.label} ${formatHumidity(humidity)}`;
+    const lines = sanitizeDisplayLines([temperatureLine, humidityLine]);
 
     return {
       weather: {
         temperature: temp,
+        lowTemperature,
+        highTemperature,
         humidity,
         rainNow,
         rainWithinTwoHours: rainForecast.withinTwoHours,
-        nextRain: rainForecast.label
+        nextRain: rainForecast.label,
+        cloudCover,
+        weatherCode,
+        isSunny
       },
       readableLines: lines,
       matrixLines: lines.map((line) => fitDisplayLine(line, 12)),
@@ -79,7 +98,12 @@ export class WeatherProvider {
         latitude: point.latitude,
         longitude: point.longitude,
         temp,
+        lowTemperature,
+        highTemperature,
         humidity,
+        cloudCover,
+        weatherCode,
+        isSunny,
         nextRain: rainForecast.label,
         rainWithinTwoHours: rainForecast.withinTwoHours
       },
@@ -143,6 +167,14 @@ function formatWeatherTime(date: Date): string {
 function roundNumber(value: unknown): number | undefined {
   const number = Number(value);
   return Number.isFinite(number) ? Math.round(number) : undefined;
+}
+
+function firstArrayValue(value: unknown): unknown {
+  return Array.isArray(value) ? value[0] : undefined;
+}
+
+function formatHumidity(value: number | undefined): string {
+  return value === undefined ? "--%" : `${value}%`;
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

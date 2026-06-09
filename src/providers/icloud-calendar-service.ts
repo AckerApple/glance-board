@@ -55,6 +55,7 @@ const defaultStorage: ICloudCalendarStorage = {
 };
 
 export class ICloudCalendarService {
+  private static readonly instances = new Set<ICloudCalendarService>();
   private client?: CalDavClientLike;
   private eventCache = new Map<string, { expiresAt: number; events: NormalizedCalendarEvent[] }>();
   private readonly createClient: NonNullable<ICloudCalendarServiceOptions["createClient"]>;
@@ -65,6 +66,7 @@ export class ICloudCalendarService {
     this.createClient = options.createClient ?? createICloudClient;
     this.storage = options.storage ?? defaultStorage;
     this.now = options.now ?? (() => new Date());
+    ICloudCalendarService.instances.add(this);
   }
 
   async status() {
@@ -103,6 +105,13 @@ export class ICloudCalendarService {
   async listCalendars(): Promise<ICloudCalendarOption[]> {
     const client = await this.getClient();
     return normalizeCalendars(await client.getCalendars());
+  }
+
+  clearCache(calendarId?: string): void {
+    for (const instance of ICloudCalendarService.instances) {
+      if (calendarId) instance.eventCache.delete(calendarId);
+      else instance.eventCache.clear();
+    }
   }
 
   async saveSelectedCalendar(calendarId: string, calendarName?: string, eventShowCount?: number): Promise<ICloudCalendarSettings> {

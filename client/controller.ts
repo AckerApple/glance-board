@@ -24,8 +24,10 @@ import type {
 } from "./types.js";
 
 const POLL_INTERVAL_MS = 15_000;
+const HARDWARE_STATUS_INTERVAL_MS = 5_000;
 let stopped = false;
 let pollTimer: number | undefined;
+let hardwareStatusTimer: number | undefined;
 let rotateTimer: number | undefined;
 let progressTimer: number | undefined;
 let rotateSeconds: number | undefined;
@@ -38,6 +40,7 @@ export const actions = {
   toggleRotationPause,
   selectCard,
   setDisplayItemEnabled,
+  setDisplayItemCategory,
   connectDisplay: () => runDisplayAction("/api/display/connect"),
   disconnectDisplay: () => runDisplayAction("/api/display/disconnect"),
   sendCurrent: () => runDisplayAction("/api/display/send-current", { cardId: rotation$[0]?.currentCardId }),
@@ -61,6 +64,7 @@ export const actions = {
 async function start(): Promise<void> {
   stopped = false;
   await Promise.all([refreshDisplayStatus(), refreshLocation(), refreshCalendar(), refreshICloudCalendar()]);
+  startHardwareStatusPolling();
   await loadBrowserSettings();
   await pollRotation();
 }
@@ -68,6 +72,7 @@ async function start(): Promise<void> {
 function stop(): void {
   stopped = true;
   if (pollTimer) window.clearTimeout(pollTimer);
+  if (hardwareStatusTimer) window.clearInterval(hardwareStatusTimer);
   if (rotateTimer) window.clearInterval(rotateTimer);
   if (progressTimer) window.clearInterval(progressTimer);
 }
@@ -83,19 +88,27 @@ async function pollRotation(): Promise<void> {
   }
 }
 
-async function refreshRotation(): Promise<void> {
-  const payload = await getJson<RotationPayload>("/api/rotation");
+async function refreshRotation(refreshCalendar = false): Promise<void> {
+  const payload = await getJson<RotationPayload>(refreshCalendar ? "/api/rotation?refresh=calendar" : "/api/rotation");
   applyRotation(payload);
 }
 
 function applyRotation(payload: RotationPayload): void {
-  const preferred = rotation$[0]?.currentCardId;
+  const backendActiveId = payload.rotation?.activeCard?.id;
+  const preferred = hardware$[0]?.autoSend ? backendActiveId : rotation$[0]?.currentCardId;
   const cards = availableCards(payload);
   const currentCardId = cards.some((card) => card.id === preferred)
     ? preferred
-    : payload.rotation?.activeCard?.id ?? cards[0]?.id;
+    : backendActiveId ?? cards[0]?.id;
   updateRotation({ payload, currentCardId, paused: Boolean(payload.rotation?.paused), error: undefined });
   restartRotation();
+}
+
+function startHardwareStatusPolling(): void {
+  if (hardwareStatusTimer) window.clearInterval(hardwareStatusTimer);
+  hardwareStatusTimer = window.setInterval(() => {
+    void refreshDisplayStatus();
+  }, HARDWARE_STATUS_INTERVAL_MS);
 }
 
 function restartRotation(): void {
@@ -174,6 +187,16 @@ async function setDisplayItemEnabled(id: string, enabled: boolean): Promise<void
     applyRotation(payload);
   } catch (error) {
     updateRotation({ error: `Item save failed: ${errorMessage(error)}` });
+  }
+}
+
+async function setDisplayItemCategory(id: string, categoryId: string): Promise<void> {
+  updateRotation({ error: undefined });
+  try {
+    const payload = await postJson<RotationPayload>("/api/rotation/items/category", { id, categoryId });
+    applyRotation(payload);
+  } catch (error) {
+    updateRotation({ error: `Category save failed: ${errorMessage(error)}` });
   }
 }
 
@@ -341,9 +364,10 @@ async function refreshICloudCalendar(): Promise<void> {
     const [{ calendars }, { events }] = await Promise.all([
       getJson<{ calendars: ICloudCalendarOption[] }>("/api/calendar/icloud/calendars"),
       status.selectedCalendarId
-        ? getJson<{ events: CalendarEvent[] }>(icloudEventsUrl(status.selectedCalendarId, status.eventShowCount ?? 3))
+        ? getJson<{ events: CalendarEvent[] }>(icloudEventsUrl(status.selectedCalendarId, status.eventShowCount ?? 3, true))
         : Promise.resolve({ events: [] })
     ]);
+    await refreshRotation(true);
     updateICloudCalendar({
       status,
       calendars,
@@ -428,8 +452,9 @@ function calendarEventsUrl(calendarId?: string): string {
     : "/api/google-calendar/events?limit=3";
 }
 
-function icloudEventsUrl(calendarId: string, limit: number): string {
-  return `/api/calendar/icloud/events?calendarId=${encodeURIComponent(calendarId)}&limit=${encodeURIComponent(String(limit))}`;
+function icloudEventsUrl(calendarId: string, limit: number, refresh = false): string {
+  const refreshParam = refresh ? "&refresh=1" : "";
+  return `/api/calendar/icloud/events?calendarId=${encodeURIComponent(calendarId)}&limit=${encodeURIComponent(String(limit))}${refreshParam}`;
 }
 
 function calendarStatusMessage(status: CalendarStatus): string {

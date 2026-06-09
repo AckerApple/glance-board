@@ -1,10 +1,11 @@
-import { button, div, h2, input, label, section, span, strong, subscribe, tag } from "taggedjs";
+import { button, div, h2, input, label, option, section, select, span, strong, subscribe, tag } from "taggedjs";
 import { actions } from "../controller.js";
 import { rotation$ } from "../state.js";
 
 export const ConfiguredItems = tag(() =>
   subscribe(rotation$, ([state]) => {
     const items = state?.payload?.rotation?.items ?? [];
+    const categories = state?.payload?.rotation?.categories ?? [];
     return section.attr("aria-label", "Configured display items")(
       h2("⚙️ Configured Items"),
       div.class`item-list`(
@@ -35,6 +36,16 @@ export const ConfiguredItems = tag(() =>
               .type("button")
               .disabled((_: unknown) => !item.resolved)
               .onClick(() => actions.selectCard(item.id))("Show"),
+            label.class`item-category`(
+              span("Category"),
+              select
+                .value((_: unknown) => item.categoryId ?? "")
+                .onChange((event: Event) => {
+                  void actions.setDisplayItemCategory(item.id, (event.target as HTMLSelectElement).value);
+                })(
+                  categories.map((category) => option.value(category.id)(category.label))
+                )
+            ),
             div.class`item-freshness`(freshnessText(item))
           );
         })

@@ -1,4 +1,5 @@
 import { CoolLedUxDisplay } from "../hardware/coolleduX/CoolLedUxDisplay.js";
+import { buildScrollDownFrames } from "../matrix/animation.js";
 import { renderDisplayCardToDisplayMatrix16x96, renderNbaDisplayModeToDisplayMatrix16x96 } from "../matrix/matrix.js";
 import { NbaDisplayMode, NormalizedDisplayCard, NormalizedGameScore } from "../rotation/types.js";
 
@@ -22,6 +23,8 @@ export class DotMatrixController {
   private autoSend = false;
   private intensity = 1;
   private connectPromise: Promise<DotMatrixStatus> | undefined;
+  private manualDisconnectInFlight = false;
+  private readonly unexpectedDisconnectListeners: Array<(status: DotMatrixStatus) => void> = [];
 
   constructor(
     private readonly options: {
@@ -33,7 +36,8 @@ export class DotMatrixController {
       deviceName: options.deviceName,
       deviceId: options.deviceId,
       width: 96,
-      height: 16
+      height: 16,
+      onDisconnect: () => this.handleUnexpectedDisconnect()
     });
   }
 
@@ -60,11 +64,25 @@ export class DotMatrixController {
   }
 
   isReadyToSend(): boolean {
+    this.refreshConnectionStatus();
     return this.status === "connected" || this.status === "sending";
   }
 
   isConnected(): boolean {
+    this.refreshConnectionStatus();
     return this.status === "connected";
+  }
+
+  onUnexpectedDisconnect(listener: (status: DotMatrixStatus) => void): void {
+    this.unexpectedDisconnectListeners.push(listener);
+  }
+
+  refreshConnectionStatus(): DotMatrixStatus {
+    if (this.status === "connected" && !this.display.isConnected()) {
+      this.status = "error";
+      this.lastMessage = "Dot matrix display disconnected unexpectedly";
+    }
+    return this.snapshot();
   }
 
   setIntensity(intensity: number): DotMatrixStatus {
@@ -86,7 +104,9 @@ export class DotMatrixController {
 
   private async connectOnce(): Promise<DotMatrixStatus> {
     try {
+      this.refreshConnectionStatus();
       if (this.status === "connected") return this.snapshot();
+      this.manualDisconnectInFlight = false;
       this.status = "connecting";
       this.lastMessage = "Connecting to dot matrix display...";
       await this.display.connect();
@@ -102,10 +122,15 @@ export class DotMatrixController {
   }
 
   async disconnect(): Promise<DotMatrixStatus> {
-    await this.display.disconnect();
-    this.status = "idle";
-    this.lastMessage = "Disconnected";
-    return this.snapshot();
+    this.manualDisconnectInFlight = true;
+    try {
+      await this.display.disconnect();
+      this.status = "idle";
+      this.lastMessage = "Disconnected";
+      return this.snapshot();
+    } finally {
+      this.manualDisconnectInFlight = false;
+    }
   }
 
   async sendGame(game: NormalizedGameScore, mode: NbaDisplayMode = "live_score"): Promise<DotMatrixStatus> {
@@ -140,6 +165,38 @@ export class DotMatrixController {
     }
 
     return this.snapshot();
+  }
+
+  async sendCardTransition(current: NormalizedDisplayCard | undefined, next: NormalizedDisplayCard): Promise<DotMatrixStatus> {
+    if (!current) return this.sendCard(next);
+
+    try {
+      this.status = "sending";
+      this.lastMessage = `Animating ${next.title} to dot matrix...`;
+      const frames = buildScrollDownFrames(
+        renderDisplayCardToDisplayMatrix16x96(current),
+        renderDisplayCardToDisplayMatrix16x96(next),
+        { durationMs: 2_000, fps: 8 }
+      );
+      await this.display.sendMatrices(frames, `${current.title} to ${next.title}`);
+      this.status = "connected";
+      this.lastSentAt = new Date().toISOString();
+      this.lastMessage = `Sent ${next.title} to dot matrix`;
+    } catch (error) {
+      await this.display.disconnect().catch(() => undefined);
+      this.status = "error";
+      this.lastMessage = error instanceof Error ? error.message : String(error);
+    }
+
+    return this.snapshot();
+  }
+
+  private handleUnexpectedDisconnect(): void {
+    if (this.manualDisconnectInFlight || this.status === "idle") return;
+    this.status = "error";
+    this.lastMessage = "Dot matrix display disconnected unexpectedly; reconnect pending";
+    const status = this.snapshot();
+    for (const listener of this.unexpectedDisconnectListeners) listener(status);
   }
 }
 

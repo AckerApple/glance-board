@@ -13,16 +13,25 @@ export type DisplayItemType =
   | "icloud-calendar-next-event";
 export type CalendarSourceType = "google-calendar" | "icloud-calendar";
 export type DisplayItemMode = "finals";
+export type DisplayCategoryIcon = "sports" | "calendar" | "local-info" | "time" | "moon" | "generic";
 
 export interface DisplayItemsConfig {
   rotationSeconds: number;
+  categories?: DisplayCategoryConfig[];
   items: DisplayItemConfig[];
+}
+
+export interface DisplayCategoryConfig {
+  id: string;
+  label: string;
+  icon: DisplayCategoryIcon;
 }
 
 export interface DisplayItemConfig {
   id: string;
   enabled: boolean;
   type: DisplayItemType;
+  categoryId?: string;
   league?: SportsLeague;
   mode?: DisplayItemMode;
   team?: string;
@@ -44,10 +53,15 @@ export interface MoonPhaseData {
 
 export interface WeatherData {
   temperature?: number;
+  lowTemperature?: number;
+  highTemperature?: number;
   humidity?: number;
   rainNow: boolean;
   rainWithinTwoHours: boolean;
   nextRain: string;
+  cloudCover?: number;
+  weatherCode?: number;
+  isSunny: boolean;
 }
 
 export interface DateTimeData {
@@ -86,6 +100,7 @@ export interface NormalizedDisplayCard {
   id: string;
   enabled: boolean;
   type: DisplayItemType;
+  categoryId?: string;
   league?: SportsLeague;
   title: string;
   status: GameStatus;
@@ -105,6 +120,7 @@ export interface RotationDisplayState {
   rotationSeconds: number;
   refreshIntervalSeconds?: number;
   paused?: boolean;
+  categories: DisplayCategoryConfig[];
   items: Array<DisplayItemConfig & {
     resolved?: boolean;
     error?: string;

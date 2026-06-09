@@ -16,10 +16,15 @@ export type CoolLedUxUpload = {
 };
 
 export function buildMatrixProgramUpload(matrix: PixelMatrix, intensity = 1): CoolLedUxUpload {
-  assertMatrix16x96(matrix);
-  const imageData = matrixToRgb444(matrix, intensity);
-  const content = buildGraffitiContent(96, 16, imageData);
-  const program = wrapProgramPayload(content);
+  return buildMatrixFramesProgramUpload([matrix], intensity);
+}
+
+export function buildMatrixFramesProgramUpload(matrices: PixelMatrix[], intensity = 1): CoolLedUxUpload {
+  if (matrices.length === 0) throw new Error("At least one matrix frame is required.");
+  for (const matrix of matrices) assertMatrix16x96(matrix);
+
+  const contents = matrices.map((matrix, index) => buildGraffitiContent(96, 16, matrixToRgb444(matrix, intensity), index === matrices.length - 1));
+  const program = wrapProgramPayload(...contents);
   const { data: compressedData, compressed } = lzssCompress(program);
   const packets = [buildProgramStartPacket(program, 0, 1, 1), ...buildProgramDataChunks(compressedData, DEFAULT_PROGRAM_CHUNK_SIZE)];
 
@@ -101,7 +106,7 @@ function scaleNibble(value: number, intensity: number): number {
   return Math.max(1, Math.min(15, Math.round(value * intensity)));
 }
 
-function buildGraffitiContent(width: number, height: number, imageData: Buffer): Buffer {
+function buildGraffitiContent(width: number, height: number, imageData: Buffer, stay = false): Buffer {
   const totalLength = 28 + imageData.length;
   const buffer = Buffer.alloc(totalLength);
   buffer.writeUInt32BE(totalLength, 0);
@@ -111,7 +116,7 @@ function buildGraffitiContent(width: number, height: number, imageData: Buffer):
   buffer.writeUInt16BE(height, 19);
   buffer[21] = 0x01; // static
   buffer[22] = 0x01; // speed
-  buffer[23] = 0x00; // infinite stay
+  buffer[23] = stay ? 0x00 : 0x01;
   buffer.writeUInt32BE(imageData.length, 24);
   imageData.copy(buffer, 28);
   return buffer;

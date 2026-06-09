@@ -110,13 +110,21 @@ function calendarEvent(event: CalendarEvent) {
 
 function formatEventStart(event: CalendarEvent): string {
   if (!event.startTime) return "TIME";
-  if (event.isAllDay) return "ALLDAY";
+  if (event.isAllDay) return `${formatEventDate(event.startTime)} ALLDAY`;
   return new Date(event.startTime).toLocaleString([], {
     weekday: "short",
     month: "short",
     day: "numeric",
     hour: "numeric",
     minute: "2-digit"
+  });
+}
+
+function formatEventDate(startTime: string): string {
+  return new Date(startTime).toLocaleDateString([], {
+    weekday: "short",
+    month: "short",
+    day: "numeric"
   });
 }
 

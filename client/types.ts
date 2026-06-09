@@ -4,6 +4,7 @@ export type PixelMatrix = PixelColor[][];
 export interface DisplayItem {
   id: string;
   enabled: boolean;
+  categoryId?: string;
   resolved?: boolean;
   error?: string;
   lastUpdated?: string;
@@ -14,6 +15,7 @@ export interface DisplayItem {
 export interface DisplayCard {
   id?: string;
   type?: string;
+  categoryId?: string;
   title?: string;
   status?: string;
   league?: string;
@@ -33,7 +35,18 @@ export interface DisplayCard {
     homeTeam?: unknown;
   };
   moon?: unknown;
-  weather?: unknown;
+  weather?: {
+    temperature?: number;
+    lowTemperature?: number;
+    highTemperature?: number;
+    humidity?: number;
+    rainNow?: boolean;
+    rainWithinTwoHours?: boolean;
+    nextRain?: string;
+    cloudCover?: number;
+    weatherCode?: number;
+    isSunny?: boolean;
+  };
   dateTime?: unknown;
   calendar?: unknown;
   debug?: Record<string, unknown>;
@@ -56,10 +69,17 @@ export interface RotationPayload {
     rotationSeconds?: number;
     refreshIntervalSeconds?: number;
     paused?: boolean;
+    categories?: DisplayCategory[];
     items?: DisplayItem[];
     cards?: DisplayCard[];
     activeCard?: DisplayCard;
   };
+}
+
+export interface DisplayCategory {
+  id: string;
+  label: string;
+  icon: string;
 }
 
 export interface DisplayStatus {

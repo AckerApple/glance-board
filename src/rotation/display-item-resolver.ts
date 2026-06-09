@@ -44,6 +44,7 @@ export class DisplayItemResolver {
         id: config.id,
         enabled: config.enabled,
         type: config.type,
+        categoryId: config.categoryId,
         league: config.league,
         title: titleForConfig(config),
         status:
@@ -68,6 +69,7 @@ export class DisplayItemResolver {
         id: config.id,
         enabled: config.enabled,
         type: config.type,
+        categoryId: config.categoryId,
         league: config.league,
         title: titleForConfig(config),
         status: "error",

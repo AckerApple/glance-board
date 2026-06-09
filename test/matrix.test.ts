@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
+import { buildScrollDownFrames } from "../src/matrix/animation.js";
 import { assertMatrix16x96, createMatrix16x96 } from "../src/matrix/core16x96.js";
 import { renderDisplayCardToDisplayMatrix16x96 } from "../src/matrix/matrix.js";
 import { NormalizedDisplayCard } from "../src/rotation/types.js";
@@ -32,6 +33,23 @@ test("rejects invalid matrix dimensions", () => {
   assert.throws(() => assertMatrix16x96(matrix), /Expected row 0/);
 });
 
+test("builds scroll-down transition frames between 16x96 matrices", () => {
+  const current = createMatrix16x96();
+  const next = createMatrix16x96();
+  current[0][0] = "red";
+  current[15][95] = "orange";
+  next[0][0] = "green";
+  next[15][95] = "blue";
+
+  const frames = buildScrollDownFrames(current, next, { durationMs: 2_000, fps: 8 });
+  for (const frame of frames) assertMatrix16x96(frame);
+
+  assert.equal(frames.length, 17);
+  assert.equal(frames[0][0][0], "red");
+  assert.equal(frames.at(-1)?.[0][0], "green");
+  assert.equal(frames.at(-1)?.[15][95], "blue");
+});
+
 test("renders regular fuel red and diesel fuel green", () => {
   const card: NormalizedDisplayCard = {
     id: "local-fuel-average",
@@ -51,6 +69,68 @@ test("renders regular fuel red and diesel fuel green", () => {
   assert.ok(!regularPixels.includes("green"));
   assert.ok(dieselPixels.includes("green"));
   assert.ok(!dieselPixels.includes("red"));
+});
+
+test("renders sunny weather with humidity at the bottom right", () => {
+  const card: NormalizedDisplayCard = {
+    id: "local-weather",
+    enabled: true,
+    type: "weather-current",
+    title: "Weather",
+    status: "live",
+    readableLines: ["80F L78 H84", "NO RAIN 72H 46%"],
+    matrixLines: ["80F L78 H84", "NO RAIN 72H"],
+    weather: {
+      temperature: 80,
+      lowTemperature: 78,
+      highTemperature: 84,
+      humidity: 46,
+      rainNow: false,
+      rainWithinTwoHours: false,
+      nextRain: "NO RAIN 72H",
+      cloudCover: 5,
+      weatherCode: 0,
+      isSunny: true
+    }
+  };
+
+  const matrix = renderDisplayCardToDisplayMatrix16x96(card);
+  const iconPixels = matrix.slice(2, 13).flatMap((row) => row.slice(2, 15));
+  const humidityPixels = matrix.slice(8, 15).flatMap((row) => row.slice(72, 96));
+
+  assert.ok(iconPixels.includes("yellow"));
+  assert.ok(iconPixels.includes("orange"));
+  assert.ok(humidityPixels.includes("blue"));
+});
+
+test("renders cloudy weather with a cloud icon", () => {
+  const card: NormalizedDisplayCard = {
+    id: "local-weather",
+    enabled: true,
+    type: "weather-current",
+    title: "Weather",
+    status: "live",
+    readableLines: ["80F L78 H84", "NO RAIN 72H 46%"],
+    matrixLines: ["80F L78 H84", "NO RAIN 72H"],
+    weather: {
+      temperature: 80,
+      lowTemperature: 78,
+      highTemperature: 84,
+      humidity: 46,
+      rainNow: false,
+      rainWithinTwoHours: false,
+      nextRain: "NO RAIN 72H",
+      cloudCover: 80,
+      weatherCode: 3,
+      isSunny: false
+    }
+  };
+
+  const matrix = renderDisplayCardToDisplayMatrix16x96(card);
+  const iconPixels = matrix.slice(3, 8).flatMap((row) => row.slice(1, 15));
+
+  assert.ok(iconPixels.includes("white"));
+  assert.ok(!iconPixels.includes("yellow"));
 });
 
 test("renders a cake icon for birthday calendar events", () => {
