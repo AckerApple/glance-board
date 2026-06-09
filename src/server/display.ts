@@ -7,6 +7,7 @@ export type DotMatrixConnectionStatus = "idle" | "connecting" | "connected" | "s
 
 const TRANSITION_FRAME_DELAY_MS = 70;
 const FINAL_FRAME_CONFIRM_DELAY_MS = 500;
+const TRANSITION_UPLOAD_MODE = process.env.GLANCEBOARD_TRANSITION_UPLOAD === "sequence" ? "sequence" : "program";
 
 export interface DotMatrixStatus {
   status: DotMatrixConnectionStatus;
@@ -84,6 +85,7 @@ export class DotMatrixController {
     if (this.status === "connected" && !this.display.isConnected()) {
       this.status = "error";
       this.lastMessage = "⚠️ Screen disconnected";
+      console.log(this.lastMessage);
     }
     return this.snapshot();
   }
@@ -116,6 +118,7 @@ export class DotMatrixController {
       this.status = "connected";
       this.lastMessage = "✅ ⚡️ Screen connected";
     } catch (error) {
+      console.warn("⚠️ display connect failed", error instanceof Error ? error.message : error);
       await this.display.disconnect().catch(() => undefined);
       this.status = "error";
       this.lastMessage = error instanceof Error ? error.message : String(error);
@@ -145,6 +148,7 @@ export class DotMatrixController {
       this.lastSentAt = new Date().toISOString();
       this.lastMessage = "✅ NBA score sent";
     } catch (error) {
+      console.warn("⚠️ NBA send failed; disconnecting display", error instanceof Error ? error.message : error);
       await this.display.disconnect().catch(() => undefined);
       this.status = "error";
       this.lastMessage = error instanceof Error ? error.message : String(error);
@@ -162,6 +166,7 @@ export class DotMatrixController {
       this.lastSentAt = new Date().toISOString();
       this.lastMessage = `✅ ${card.title}`;
     } catch (error) {
+      console.warn(`⚠️ ${card.title} send failed; disconnecting display`, error instanceof Error ? error.message : error);
       await this.display.disconnect().catch(() => undefined);
       this.status = "error";
       this.lastMessage = error instanceof Error ? error.message : String(error);
@@ -184,12 +189,17 @@ export class DotMatrixController {
         { durationMs: 560, fps: 14 }
       );
       const transitionFrames = frames.slice(1);
-      await this.display.sendMatrixSequence(transitionFrames, `${current.title} → ${next.title}`, TRANSITION_FRAME_DELAY_MS);
-      await this.display.confirmMatrix(nextMatrix, `${next.title} confirm`, FINAL_FRAME_CONFIRM_DELAY_MS);
+      if (TRANSITION_UPLOAD_MODE === "sequence") {
+        await this.display.sendMatrixSequence(transitionFrames, `${current.title} → ${next.title}`, TRANSITION_FRAME_DELAY_MS);
+        await this.display.confirmMatrix(nextMatrix, `${next.title} confirm`, FINAL_FRAME_CONFIRM_DELAY_MS);
+      } else {
+        await this.display.sendMatrices(transitionFrames, `${current.title} → ${next.title}`);
+      }
       this.status = "connected";
       this.lastSentAt = new Date().toISOString();
       this.lastMessage = `✅ ${next.title}`;
     } catch (error) {
+      console.warn(`⚠️ ${current.title} → ${next.title} send failed; disconnecting display`, error instanceof Error ? error.message : error);
       await this.display.disconnect().catch(() => undefined);
       this.status = "error";
       this.lastMessage = error instanceof Error ? error.message : String(error);

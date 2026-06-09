@@ -71,6 +71,7 @@ export type WritableCharacteristic = {
 
 type UploadTimingOptions = {
   packetDelayMs?: number;
+  quiet?: boolean;
   settleMs?: number;
   subscribe?: boolean;
   writeDelayMs?: number;
@@ -78,10 +79,13 @@ type UploadTimingOptions = {
 
 const ANIMATION_UPLOAD_OPTIONS: UploadTimingOptions = {
   packetDelayMs: 0,
+  quiet: true,
   settleMs: 0,
   subscribe: false,
   writeDelayMs: 0
 };
+
+const DISPLAY_VERBOSE = process.env.GLANCEBOARD_DISPLAY_VERBOSE === "true";
 
 export class CoolLedUxDisplay {
   private peripheral: Peripheral | undefined;
@@ -124,6 +128,7 @@ export class CoolLedUxDisplay {
     this.peripheral = peripheral;
     peripheral.once("disconnect", () => {
       if (this.peripheral?.id !== peripheral.id) return;
+      console.log(`⚠️ display disconnected ${peripheral.advertisement.localName ?? peripheral.id}`);
       this.peripheral = undefined;
       this.services = [];
       this.writable = undefined;
@@ -134,6 +139,7 @@ export class CoolLedUxDisplay {
 
   async disconnect(): Promise<void> {
     if (!this.peripheral) return;
+    console.log(`⏹️ disconnect ${this.peripheral.advertisement.localName ?? this.peripheral.id}`);
     await disconnectQuietly(this.peripheral);
     this.peripheral = undefined;
     this.services = [];
@@ -196,6 +202,7 @@ export class CoolLedUxDisplay {
   async sendMatrices(matrices: PixelMatrix[], label = "matrix animation"): Promise<void> {
     if (matrices.length === 0) throw new Error("At least one matrix frame is required.");
     for (const matrix of matrices) assertMatrix16x96(matrix);
+    console.log(`🎞️ ${label} frames=${matrices.length} upload=program`);
     await this.sendUpload(buildMatrixFramesProgramUpload(matrices, this.intensity), label);
   }
 
@@ -214,14 +221,14 @@ export class CoolLedUxDisplay {
   async confirmMatrix(matrix: PixelMatrix, label = "matrix confirm", delayMs = 500): Promise<void> {
     assertMatrix16x96(matrix);
     if (delayMs > 0) await sleepMs(delayMs);
-    console.log(`🔁 confirm ${label}`);
     await this.sendUpload(buildMatrixProgramUpload(matrix, this.intensity), label, ANIMATION_UPLOAD_OPTIONS);
   }
 
   private async sendUpload(upload: CoolLedUxUpload, label: string, options: UploadTimingOptions = {}): Promise<void> {
     await this.connect();
     const candidate = await this.getWritableCharacteristic();
-    console.log(`✏️ char ${candidate.service.uuid}/${candidate.characteristic.uuid}`);
+    const quiet = options.quiet === true || !DISPLAY_VERBOSE;
+    if (!quiet) console.log(`✏️ char ${candidate.service.uuid}/${candidate.characteristic.uuid}`);
 
     const notifications: Buffer<ArrayBufferLike>[] = [];
     let notificationBuffer: Buffer<ArrayBufferLike> = Buffer.alloc(0);
@@ -234,21 +241,21 @@ export class CoolLedUxDisplay {
         for (const frame of parsed.frames) {
           notifications.push(frame);
           const view = byteView(frame);
-          console.log(`📨 ${view.decimal.join(",")}`);
+          if (!quiet) console.log(`📨 ${view.decimal.join(",")}`);
         }
       };
       candidate.characteristic.on("data", onData);
       await subscribeCharacteristic(candidate.characteristic);
     }
 
-    console.log(`📤 upload ${upload.compressedLength}B/${upload.rawProgramLength}B packets=${upload.packets.length}`);
+    if (!quiet) console.log(`📤 upload ${upload.compressedLength}B/${upload.rawProgramLength}B packets=${upload.packets.length}`);
     try {
       const writeDelayMs = options.writeDelayMs ?? 50;
       const packetDelayMs = options.packetDelayMs ?? 300;
       for (let packetIndex = 0; packetIndex < upload.packets.length; packetIndex += 1) {
         const packet = upload.packets[packetIndex];
         const bleWrites = splitBleWrites(packet, 20);
-        console.log(`📦 ${packetIndex + 1}/${upload.packets.length} ${packet.length}B ${bleWrites.length} writes`);
+        if (!quiet) console.log(`📦 ${packetIndex + 1}/${upload.packets.length} ${packet.length}B ${bleWrites.length} writes`);
         for (const chunk of bleWrites) {
           await writeCharacteristic(candidate.characteristic, chunk, true);
           if (writeDelayMs > 0) await sleepMs(writeDelayMs);
@@ -258,7 +265,7 @@ export class CoolLedUxDisplay {
 
       const settleMs = options.settleMs ?? 3000;
       if (settleMs > 0) await new Promise((resolve) => setTimeout(resolve, settleMs));
-      console.log(`✅ "${label}" notifications=${notifications.length}`);
+      if (!quiet) console.log(`✅ "${label}" notifications=${notifications.length}`);
     } finally {
       if (onData) candidate.characteristic.removeListener("data", onData);
     }

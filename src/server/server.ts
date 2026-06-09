@@ -16,6 +16,7 @@ const publicDir = path.resolve(process.cwd(), process.env.GLANCEBOARD_PUBLIC_DIR
 const RECONNECT_BASE_DELAY_MS = 5_000;
 const RECONNECT_MAX_DELAY_MS = 60_000;
 const FAST_ROTATION_SECONDS = 3;
+const DISPLAY_VERBOSE = process.env.GLANCEBOARD_DISPLAY_VERBOSE === "true";
 
 type RotationPace = "normal" | "fast";
 
@@ -108,23 +109,23 @@ export async function startRotatingDisplayServer(port: number): Promise<Rotating
   const scheduleBackendRotation = (delayMs = 0) => {
     stopBackendRotation();
     if (rotationTickInFlight) {
-      log("⏭️", "rotation busy");
+      logVerbose("⏭️", "rotation busy");
       return;
     }
     if (!display.isAutoSendEnabled()) {
-      log("⏸️", "rotation off");
+      logVerbose("⏸️", "rotation off");
       return;
     }
     if (rotationPaused) {
-      log("⏸️", "rotation paused");
+      logVerbose("⏸️", "rotation paused");
       return;
     }
     if (!display.isReadyToSend()) {
-      log("🔌", "waiting for screen");
+      logVerbose("🔌", "waiting for screen");
       scheduleReconnect(0);
       return;
     }
-    log("⏱️", `rotate in ${formatDelay(delayMs)}`);
+    logVerbose("⏱️", `rotate in ${formatDelay(delayMs)}`);
     rotationTimer = setTimeout(() => {
       void tickBackendRotation();
     }, delayMs);
@@ -132,7 +133,7 @@ export async function startRotatingDisplayServer(port: number): Promise<Rotating
 
   const tickBackendRotation = async () => {
     if (rotationTickInFlight || !display.isAutoSendEnabled() || rotationPaused || !display.isReadyToSend()) {
-      log("⏭️", rotationSkipReason(rotationTickInFlight, display.isAutoSendEnabled(), rotationPaused, display.isReadyToSend()));
+      logVerbose("⏭️", rotationSkipReason(rotationTickInFlight, display.isAutoSendEnabled(), rotationPaused, display.isReadyToSend()));
       if (!display.isReadyToSend()) scheduleReconnect(0);
       scheduleBackendRotation(1000);
       return;
@@ -151,7 +152,7 @@ export async function startRotatingDisplayServer(port: number): Promise<Rotating
         activeCardId = card.id;
         log("✏️", currentCard && currentCard.id !== card.id ? `${currentCard.title} → ${card.title}` : card.title);
         const status = await display.sendCardTransition(currentCard?.id === card.id ? undefined : currentCard, card);
-        log(status.status === "error" ? "⚠️" : "✅", status.lastMessage ?? card.title);
+        log(status.status === "error" ? "⚠️" : "✅", status.status === "error" ? status.lastMessage ?? card.title : card.title);
         if (status.status === "error") scheduleReconnect(0);
         else updateRotationPass(card, rotation.cards);
       } else {
@@ -398,6 +399,10 @@ function reconnectDelayMs(attempts: number): number {
 
 function log(icon: string, message: string): void {
   console.log(`${icon} ${message}`);
+}
+
+function logVerbose(icon: string, message: string): void {
+  if (DISPLAY_VERBOSE) log(icon, message);
 }
 
 function formatDelay(delayMs: number): string {
