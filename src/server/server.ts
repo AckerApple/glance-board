@@ -11,10 +11,12 @@ import { renderDisplayCardPreviewMatrix, renderNbaDisplayModeToMatrix, renderNba
 import { RotationEngine } from "../rotation/rotation-engine.js";
 import { NbaDisplayMode, NbaDisplayState, NbaScoreResponse, NormalizedDisplayCard, NormalizedGameScore, RotationDisplayState } from "../rotation/types.js";
 import { setDisplayItemCategory, setDisplayItemEnabled } from "../rotation/display-config.js";
+import { logWithClock } from "../hardware/logging.js";
 
 const publicDir = path.resolve(process.cwd(), process.env.GLANCEBOARD_PUBLIC_DIR ?? "public");
 const RECONNECT_BASE_DELAY_MS = 5_000;
 const RECONNECT_MAX_DELAY_MS = 60_000;
+const RECONNECT_SETTLE_DELAY_MS = 500;
 const FAST_ROTATION_SECONDS = 3;
 const DISPLAY_VERBOSE = process.env.GLANCEBOARD_DISPLAY_VERBOSE === "true";
 
@@ -33,8 +35,8 @@ export async function startRotatingDisplayServer(port: number): Promise<Rotating
   let rotationPaused = false;
   let rotationTimer: NodeJS.Timeout | undefined;
   let rotationTickInFlight = false;
-  let rotationPace: RotationPace = "normal";
-  let pendingRotationPace: RotationPace | undefined;
+  let rotationPace: RotationPace = "fast";
+  let displaySecondsOverride: number | undefined;
   let seenCardIdsThisPass = new Set<string>();
   let reconnectTimer: NodeJS.Timeout | undefined;
   let reconnectAttempts = 0;
@@ -74,7 +76,7 @@ export async function startRotatingDisplayServer(port: number): Promise<Rotating
       if (status.status === "connected") {
         log("✅ ⚡️", "screen connected");
         reconnectAttempts = 0;
-        scheduleBackendRotation();
+        scheduleBackendRotation(RECONNECT_SETTLE_DELAY_MS);
         return;
       }
 
@@ -125,7 +127,7 @@ export async function startRotatingDisplayServer(port: number): Promise<Rotating
       scheduleReconnect(0);
       return;
     }
-    logVerbose("⏱️", `rotate in ${formatDelay(delayMs)}`);
+    log("⏱️", `next rotation in ${formatDelay(delayMs)}`);
     rotationTimer = setTimeout(() => {
       void tickBackendRotation();
     }, delayMs);
@@ -140,21 +142,29 @@ export async function startRotatingDisplayServer(port: number): Promise<Rotating
     }
 
     rotationTickInFlight = true;
+    const paceForTick = rotationPace;
+    let completedSuccessfully = false;
     try {
-      applyPendingRotationPace();
       const [state, rotation] = await Promise.all([fetchNbaDisplayState(), rotationEngine.refresh()]);
       latestState = state;
       latestRotation = rotation;
       const currentCard = activeCardId ? rotation.cards.find((candidate) => candidate.id === activeCardId) : undefined;
       const card = rotationEngine.next() ?? rotation.activeCard;
       if (card) {
-        rotation.activeCard = card;
-        activeCardId = card.id;
         log("✏️", currentCard && currentCard.id !== card.id ? `${currentCard.title} → ${card.title}` : card.title);
-        const status = await display.sendCardTransition(currentCard?.id === card.id ? undefined : currentCard, card);
+        const sendStartedAt = Date.now();
+        const secondsForTick = displaySeconds(rotation.rotationSeconds);
+        const status = await display.sendCardTransition(currentCard?.id === card.id ? undefined : currentCard, card, paceForTick, secondsForTick);
+        log("⏱️", `sent in ${formatDelay(Date.now() - sendStartedAt)}`);
         log(status.status === "error" ? "⚠️" : "✅", status.status === "error" ? status.lastMessage ?? card.title : card.title);
-        if (status.status === "error") scheduleReconnect(0);
-        else updateRotationPass(card, rotation.cards);
+        if (status.status === "error" || !display.isConnected()) {
+          scheduleReconnect(0);
+        } else {
+          rotation.activeCard = card;
+          activeCardId = card.id;
+          updateRotationPass(card, rotation.cards);
+          completedSuccessfully = true;
+        }
       } else {
         log("⚠️", "no cards");
       }
@@ -163,16 +173,17 @@ export async function startRotatingDisplayServer(port: number): Promise<Rotating
       log("⚠️", error instanceof Error ? error.message : String(error));
     } finally {
       rotationTickInFlight = false;
-      const seconds = rotationDelaySeconds(latestRotation?.rotationSeconds ?? 10);
-      scheduleBackendRotation(Math.max(1, seconds) * 1000);
+      if (completedSuccessfully && display.isConnected()) {
+        const seconds = displaySeconds(latestRotation?.rotationSeconds ?? 10);
+        const delayMs = Math.max(3, seconds) * 1000;
+        log("⏳", `hold ${formatDelay(delayMs)}\n`);
+        scheduleBackendRotation(delayMs);
+      } else {
+        log("⏸️", "rotation hold skipped");
+        if (display.isConnected()) scheduleBackendRotation(RECONNECT_SETTLE_DELAY_MS);
+        else if (autoReconnectEnabled) scheduleReconnect(0);
+      }
     }
-  };
-
-  const applyPendingRotationPace = () => {
-    if (!pendingRotationPace) return;
-    rotationPace = pendingRotationPace;
-    pendingRotationPace = undefined;
-    log(rotationPace === "fast" ? "⚡️" : "⏱️", `${rotationPace} pass`);
   };
 
   const updateRotationPass = (card: NormalizedDisplayCard, cards: NormalizedDisplayCard[]) => {
@@ -183,18 +194,26 @@ export async function startRotatingDisplayServer(port: number): Promise<Rotating
 
     if (seenCardIdsThisPass.size < cards.length) return;
     seenCardIdsThisPass = new Set();
-    pendingRotationPace = rotationPace === "normal" ? "fast" : "normal";
-    log("🔁", `next pass ${pendingRotationPace === "fast" ? `${FAST_ROTATION_SECONDS}s` : `${latestRotation?.rotationSeconds ?? 10}s`}`);
+    if (displaySecondsOverride !== undefined) return;
+    rotationPace = rotationPace === "normal" ? "fast" : "normal";
+    log(rotationPace === "fast" ? "⚡️" : "⏱️", `${rotationPace} pass`);
+    logDisplaySeconds(latestRotation?.rotationSeconds ?? 10);
   };
 
-  const rotationDelaySeconds = (normalSeconds: number) => {
-    return rotationPace === "fast" ? FAST_ROTATION_SECONDS : normalSeconds;
+  const displaySeconds = (normalSeconds: number) => {
+    return displaySecondsOverride ?? (rotationPace === "fast" ? FAST_ROTATION_SECONDS : Math.max(3, normalSeconds));
+  };
+
+  const logDisplaySeconds = (normalSeconds: number) => {
+    log("⏲️", `display ${displaySeconds(normalSeconds)}s per slide`);
   };
 
   const settings = await browserSettings.get();
   display.setIntensity(settings.displayIntensity);
   display.setAutoSend(settings.autoSendRotation);
   log(settings.autoSendRotation ? "▶️" : "⏸️", `auto-send ${settings.autoSendRotation ? "on" : "off"}`);
+  log("⚡️", `${rotationPace} pass`);
+  logDisplaySeconds(10);
   if (settings.autoSendRotation) {
     enableAutoReconnect();
     scheduleBackendRotation();
@@ -206,10 +225,9 @@ export async function startRotatingDisplayServer(port: number): Promise<Rotating
 
       if (url.pathname === "/api/rotation" || url.pathname === "/api/nba-score") {
         if (url.searchParams.get("refresh") === "calendar") invalidateCalendarRotation(rotationEngine);
-        const handled = await handleScoreApi(response, display, rotationEngine, activeCardId, rotationPaused);
+        const handled = await handleScoreApi(response, display, rotationEngine, activeCardId, rotationPaused, displaySeconds);
         latestState = handled.legacyState;
         latestRotation = handled.rotation;
-        activeCardId = handled.rotation.activeCard?.id;
         return;
       }
 
@@ -224,10 +242,10 @@ export async function startRotatingDisplayServer(port: number): Promise<Rotating
         const enabled = typeof body.enabled === "boolean" ? body.enabled : false;
 
         await setDisplayItemEnabled(id, enabled);
-        const handled = await handleScoreApi(response, display, rotationEngine, activeCardId === id && !enabled ? undefined : activeCardId, rotationPaused);
+        if (activeCardId === id && !enabled) activeCardId = undefined;
+        const handled = await handleScoreApi(response, display, rotationEngine, activeCardId === id && !enabled ? undefined : activeCardId, rotationPaused, displaySeconds);
         latestState = handled.legacyState;
         latestRotation = handled.rotation;
-        activeCardId = handled.rotation.activeCard?.id;
         scheduleBackendRotation();
         return;
       }
@@ -243,11 +261,21 @@ export async function startRotatingDisplayServer(port: number): Promise<Rotating
         }
 
         await setDisplayItemCategory(id, categoryId);
-        const handled = await handleScoreApi(response, display, rotationEngine, activeCardId, rotationPaused);
+        const handled = await handleScoreApi(response, display, rotationEngine, activeCardId, rotationPaused, displaySeconds);
         latestState = handled.legacyState;
         latestRotation = handled.rotation;
-        activeCardId = handled.rotation.activeCard?.id;
         scheduleBackendRotation();
+        return;
+      }
+
+      if (url.pathname === "/api/rotation/display-seconds" && request.method === "POST") {
+        const body = await readJsonBody(request);
+        displaySecondsOverride = normalizeDisplaySeconds(body.seconds);
+        logDisplaySeconds(latestRotation?.rotationSeconds ?? 10);
+        const handled = await handleScoreApi(response, display, rotationEngine, activeCardId, rotationPaused, displaySeconds);
+        latestState = handled.legacyState;
+        latestRotation = handled.rotation;
+        scheduleBackendRotation(displaySecondsOverride * 1000);
         return;
       }
 
@@ -397,8 +425,14 @@ function reconnectDelayMs(attempts: number): number {
   return Math.min(RECONNECT_MAX_DELAY_MS, RECONNECT_BASE_DELAY_MS * 2 ** Math.min(attempts, 4));
 }
 
+function normalizeDisplaySeconds(value: unknown): number {
+  const seconds = Number(value);
+  if (!Number.isFinite(seconds)) return 3;
+  return Math.max(3, Math.round(seconds));
+}
+
 function log(icon: string, message: string): void {
-  console.log(`${icon} ${message}`);
+  logWithClock(`${icon} ${message}`);
 }
 
 function logVerbose(icon: string, message: string): void {
@@ -407,6 +441,7 @@ function logVerbose(icon: string, message: string): void {
 
 function formatDelay(delayMs: number): string {
   if (delayMs <= 0) return "now";
+  if (delayMs < 1000) return `${Math.round(delayMs)}ms`;
   return `${Math.round(delayMs / 1000)}s`;
 }
 
@@ -617,9 +652,11 @@ async function handleScoreApi(
   display: DotMatrixController,
   rotationEngine: RotationEngine,
   preferredCardId: string | undefined,
-  paused: boolean
+  paused: boolean,
+  effectiveRotationSeconds?: (normalSeconds: number) => number
 ): Promise<{ legacyState: NbaDisplayState; rotation: RotationDisplayState }> {
   const [state, rotation] = await Promise.all([fetchNbaDisplayState(), rotationEngine.refresh()]);
+  if (effectiveRotationSeconds) rotation.rotationSeconds = effectiveRotationSeconds(rotation.rotationSeconds);
   if (preferredCardId) {
     const activeCard = rotationEngine.select(preferredCardId);
     if (activeCard) rotation.activeCard = activeCard;

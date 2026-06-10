@@ -39,6 +39,7 @@ export const actions = {
   showNextItem,
   toggleRotationPause,
   selectCard,
+  setDisplaySeconds,
   setDisplayItemEnabled,
   setDisplayItemCategory,
   connectDisplay: () => runDisplayAction("/api/display/connect"),
@@ -154,6 +155,16 @@ async function toggleRotationPause(): Promise<void> {
     restartRotation();
   } catch (error) {
     updateRotation({ error: `Pause failed: ${errorMessage(error)}` });
+  }
+}
+
+async function setDisplaySeconds(seconds: number): Promise<void> {
+  updateRotation({ error: undefined });
+  try {
+    const payload = await postJson<RotationPayload>("/api/rotation/display-seconds", { seconds });
+    applyRotation(payload);
+  } catch (error) {
+    updateRotation({ error: `Display seconds save failed: ${errorMessage(error)}` });
   }
 }
 

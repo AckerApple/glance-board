@@ -7,6 +7,7 @@ const XOR_MASK = 0x04;
 const PROGRAM_START = 0x02;
 const PROGRAM_DATA = 0x03;
 const DEFAULT_PROGRAM_CHUNK_SIZE = 1024;
+const MAX_PROGRAM_BYTES = 65_536;
 
 export type CoolLedUxUpload = {
   rawProgramLength: number;
@@ -15,16 +16,56 @@ export type CoolLedUxUpload = {
   packets: Buffer[];
 };
 
+export type FrameDurations = number | number[];
+
 export function buildMatrixProgramUpload(matrix: PixelMatrix, intensity = 1): CoolLedUxUpload {
-  return buildMatrixFramesProgramUpload([matrix], intensity);
+  assertMatrix16x96(matrix);
+  return buildProgramUpload([buildGraffitiContent(96, 16, matrixToRgb444(matrix, intensity), true)]);
 }
 
-export function buildMatrixFramesProgramUpload(matrices: PixelMatrix[], intensity = 1): CoolLedUxUpload {
+export function buildMatrixFramesProgramUpload(matrices: PixelMatrix[], intensity = 1, frameDurationsMs: FrameDurations = 100): CoolLedUxUpload {
+  return buildProgramUpload([buildMatrixProgramContent(matrices, intensity, frameDurationsMs)]);
+}
+
+export function buildMatrixTransitionProgramUpload(animationFrames: PixelMatrix[], finalMatrix: PixelMatrix, intensity = 1, frameDurationsMs: FrameDurations = 100): CoolLedUxUpload {
+  return buildProgramUpload(buildMatrixTransitionContents(animationFrames, finalMatrix, intensity, frameDurationsMs));
+}
+
+export function buildMatrixTransitionProgramPayload(animationFrames: PixelMatrix[], finalMatrix: PixelMatrix, intensity = 1, frameDurationsMs: FrameDurations = 100): Buffer {
+  return wrapProgramPayload(...buildMatrixTransitionContents(animationFrames, finalMatrix, intensity, frameDurationsMs));
+}
+
+function buildMatrixTransitionContents(animationFrames: PixelMatrix[], finalMatrix: PixelMatrix, intensity: number, frameDurationsMs: FrameDurations): Buffer[] {
+  if (animationFrames.length === 0) return [buildGraffitiContent(96, 16, matrixToRgb444(finalMatrix, intensity), true)];
+  for (const matrix of animationFrames) assertMatrix16x96(matrix);
+  assertMatrix16x96(finalMatrix);
+
+  const frameData = Buffer.concat(animationFrames.map((matrix) => matrixToRgb444(matrix, intensity)));
+  return [
+    buildAnimationContent(96, 16, frameData, animationFrames.length, frameDurationsMs),
+    buildGraffitiContent(96, 16, matrixToRgb444(finalMatrix, intensity), true)
+  ];
+}
+
+export function buildMatrixProgramPayload(matrices: PixelMatrix[], intensity = 1, frameDurationsMs: FrameDurations = 100): Buffer {
+  return wrapProgramPayload(buildMatrixProgramContent(matrices, intensity, frameDurationsMs));
+}
+
+function buildMatrixProgramContent(matrices: PixelMatrix[], intensity: number, frameDurationsMs: FrameDurations): Buffer {
   if (matrices.length === 0) throw new Error("At least one matrix frame is required.");
   for (const matrix of matrices) assertMatrix16x96(matrix);
 
-  const contents = matrices.map((matrix, index) => buildGraffitiContent(96, 16, matrixToRgb444(matrix, intensity), index === matrices.length - 1));
+  if (matrices.length === 1) return buildGraffitiContent(96, 16, matrixToRgb444(matrices[0], intensity), true);
+
+  const frameData = Buffer.concat(matrices.map((matrix) => matrixToRgb444(matrix, intensity)));
+  return buildAnimationContent(96, 16, frameData, matrices.length, frameDurationsMs);
+}
+
+function buildProgramUpload(contents: Buffer[]): CoolLedUxUpload {
   const program = wrapProgramPayload(...contents);
+  if (program.length > MAX_PROGRAM_BYTES) {
+    throw new Error(`CoolLEDUX program is too large: ${program.length} bytes exceeds ${MAX_PROGRAM_BYTES} bytes`);
+  }
   const { data: compressedData, compressed } = lzssCompress(program);
   const packets = [buildProgramStartPacket(program, 0, 1, 1), ...buildProgramDataChunks(compressedData, DEFAULT_PROGRAM_CHUNK_SIZE)];
 
@@ -120,6 +161,32 @@ function buildGraffitiContent(width: number, height: number, imageData: Buffer, 
   buffer.writeUInt32BE(imageData.length, 24);
   imageData.copy(buffer, 28);
   return buffer;
+}
+
+function buildAnimationContent(width: number, height: number, frameData: Buffer, frameCount: number, frameDurationsMs: FrameDurations): Buffer {
+  const frameDelays = normalizeFrameDelays(frameDurationsMs, frameCount);
+  const headerLength = 24 + frameCount * 2;
+  const totalLength = headerLength + frameData.length;
+  const buffer = Buffer.alloc(totalLength);
+  buffer.writeUInt32BE(totalLength, 0);
+  buffer[4] = 0x03;
+  buffer[5] = 0x01;
+  buffer[12] = 0x01;
+  buffer.writeUInt16BE(width, 17);
+  buffer.writeUInt16BE(height, 19);
+  buffer[21] = 0x00;
+  buffer.writeUInt16BE(frameCount, 22);
+  for (let index = 0; index < frameCount; index += 1) {
+    buffer.writeUInt16BE(frameDelays[index], 24 + index * 2);
+  }
+  frameData.copy(buffer, headerLength);
+  return buffer;
+}
+
+function normalizeFrameDelays(frameDurationsMs: FrameDurations, frameCount: number): number[] {
+  const durations = Array.isArray(frameDurationsMs) ? frameDurationsMs : Array.from({ length: frameCount }, () => frameDurationsMs);
+  if (durations.length !== frameCount) throw new Error(`Expected ${frameCount} frame delays, got ${durations.length}`);
+  return durations.map((duration) => Math.max(1, Math.min(0xffff, Math.round(duration))));
 }
 
 function wrapProgramPayload(...contents: Buffer[]): Buffer {

@@ -114,6 +114,8 @@ LED_DEVICE_ID=your-device-id npm run dev
 
 The browser can connect, send the visible card, control intensity, and resend the current screen every second while auto-send is enabled.
 
+For transition animation protocol notes, timing constraints, fast BLE transport settings, and the working mixed-delay recipe, see [docs/animation.md](docs/animation.md).
+
 ## Secret Safety
 
 The following are ignored:

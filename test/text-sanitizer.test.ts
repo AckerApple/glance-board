@@ -12,6 +12,11 @@ test("can preserve ampersands for compact display text", () => {
   assert.equal(fitDisplayLine("A & B", 5, { preserveAmpersand: true }), "A & B");
 });
 
+test("preserves straight and curly apostrophes", () => {
+  assert.equal(sanitizeDisplayText("Jordan's bday"), "JORDAN'S BDAY");
+  assert.equal(sanitizeDisplayText("Mark Hunt’s Birthday"), "MARK HUNT'S BIRTHDAY");
+});
+
 test("fits sanitized text to the requested matrix length", () => {
   assert.equal(fitDisplayLine("NYK @ SAS", 8), "NYK AT S");
 });

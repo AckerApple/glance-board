@@ -22,7 +22,15 @@ import {
 } from "../ble-utils.js";
 import { sessionStamp, timestamp } from "../logging.js";
 import { assertMatrix16x96, PixelMatrix } from "../../matrix/core16x96.js";
-import { buildMatrixFramesProgramUpload, buildMatrixProgramUpload, CoolLedUxUpload, parseStreamFramesFromBuffer, splitBleWrites } from "./coolleduXProtocol.js";
+import {
+  buildMatrixFramesProgramUpload,
+  buildMatrixProgramUpload,
+  buildMatrixTransitionProgramUpload,
+  CoolLedUxUpload,
+  parseStreamFramesFromBuffer,
+  splitBleWrites
+} from "./coolleduXProtocol.js";
+import type { FrameDurations } from "./coolleduXProtocol.js";
 
 export type DiscoveredDisplay = AdvertisementSnapshot & {
   matchReasons: string[];
@@ -85,12 +93,22 @@ const ANIMATION_UPLOAD_OPTIONS: UploadTimingOptions = {
   writeDelayMs: 0
 };
 
+const MULTIFRAME_UPLOAD_OPTIONS: UploadTimingOptions = {
+  packetDelayMs: 120,
+  quiet: true,
+  settleMs: 300,
+  subscribe: false,
+  writeDelayMs: 12
+};
+
 const DISPLAY_VERBOSE = process.env.GLANCEBOARD_DISPLAY_VERBOSE === "true";
+const BLE_AUDIT = process.env.GLANCEBOARD_BLE_AUDIT === "true";
 
 export class CoolLedUxDisplay {
   private peripheral: Peripheral | undefined;
   private services: Service[] = [];
   private writable: WritableCharacteristic | undefined;
+  private uploadQueue: Promise<void> = Promise.resolve();
   intensity = 1;
 
   constructor(private readonly options: { deviceName: string; deviceId?: string; width: number; height: number; onDisconnect?: () => void }) {}
@@ -199,18 +217,32 @@ export class CoolLedUxDisplay {
     await this.sendUpload(buildMatrixProgramUpload(matrix, this.intensity), label);
   }
 
-  async sendMatrices(matrices: PixelMatrix[], label = "matrix animation"): Promise<void> {
+  async sendMatrixQuick(matrix: PixelMatrix, label = "matrix frame"): Promise<void> {
+    assertMatrix16x96(matrix);
+    await this.sendUpload(buildMatrixProgramUpload(matrix, this.intensity), label, ANIMATION_UPLOAD_OPTIONS);
+  }
+
+  async sendMatrices(matrices: PixelMatrix[], label = "matrix animation", frameDelayMs: FrameDurations = 100): Promise<void> {
     if (matrices.length === 0) throw new Error("At least one matrix frame is required.");
     for (const matrix of matrices) assertMatrix16x96(matrix);
-    console.log(`🎞️ ${label} frames=${matrices.length} upload=program`);
-    await this.sendUpload(buildMatrixFramesProgramUpload(matrices, this.intensity), label);
+    const delayLabel = Array.isArray(frameDelayMs) ? "mixed" : `${frameDelayMs}ms`;
+    console.log(`🎞️ ${label} frames=${matrices.length} upload=program transport=paced delay=${delayLabel}`);
+    await this.sendUpload(buildMatrixFramesProgramUpload(matrices, this.intensity, frameDelayMs), label, MULTIFRAME_UPLOAD_OPTIONS);
+  }
+
+  async sendTransition(animationFrames: PixelMatrix[], finalMatrix: PixelMatrix, label = "matrix transition", frameDelayMs = 100): Promise<void> {
+    if (animationFrames.length === 0) return this.sendMatrix(finalMatrix, label);
+    for (const matrix of animationFrames) assertMatrix16x96(matrix);
+    assertMatrix16x96(finalMatrix);
+    console.log(`🎞️ ${label} frames=${animationFrames.length} upload=program+static transport=paced delay=${frameDelayMs}ms`);
+    await this.sendUpload(buildMatrixTransitionProgramUpload(animationFrames, finalMatrix, this.intensity, frameDelayMs), label, MULTIFRAME_UPLOAD_OPTIONS);
   }
 
   async sendMatrixSequence(matrices: PixelMatrix[], label = "matrix animation", frameDelayMs = 70): Promise<void> {
     if (matrices.length === 0) return;
     for (const matrix of matrices) assertMatrix16x96(matrix);
 
-    console.log(`🎞️ ${label} frames=${matrices.length} delay=${frameDelayMs}ms`);
+    console.log(`🎞️ ${label} frames=${matrices.length} upload=sequence delay=${frameDelayMs}ms`);
     const uploads = matrices.map((matrix) => buildMatrixProgramUpload(matrix, this.intensity));
     for (let index = 0; index < uploads.length; index += 1) {
       await this.sendUpload(uploads[index], `${label} ${index + 1}/${uploads.length}`, ANIMATION_UPLOAD_OPTIONS);
@@ -225,15 +257,25 @@ export class CoolLedUxDisplay {
   }
 
   private async sendUpload(upload: CoolLedUxUpload, label: string, options: UploadTimingOptions = {}): Promise<void> {
+    const uploadPromise = this.uploadQueue.then(
+      () => this.sendUploadNow(upload, label, options),
+      () => this.sendUploadNow(upload, label, options)
+    );
+    this.uploadQueue = uploadPromise.catch(() => undefined);
+    return uploadPromise;
+  }
+
+  private async sendUploadNow(upload: CoolLedUxUpload, label: string, options: UploadTimingOptions = {}): Promise<void> {
     await this.connect();
     const candidate = await this.getWritableCharacteristic();
-    const quiet = options.quiet === true || !DISPLAY_VERBOSE;
+    const quiet = !BLE_AUDIT && (options.quiet === true || !DISPLAY_VERBOSE);
     if (!quiet) console.log(`✏️ char ${candidate.service.uuid}/${candidate.characteristic.uuid}`);
 
     const notifications: Buffer<ArrayBufferLike>[] = [];
     let notificationBuffer: Buffer<ArrayBufferLike> = Buffer.alloc(0);
     let onData: ((data: Buffer) => void) | undefined;
-    if (options.subscribe !== false && canNotify(candidate.characteristic)) {
+    const shouldSubscribe = BLE_AUDIT || options.subscribe !== false;
+    if (shouldSubscribe && canNotify(candidate.characteristic)) {
       onData = (data) => {
         notificationBuffer = Buffer.concat([notificationBuffer, data]);
         const parsed = parseStreamFramesFromBuffer(notificationBuffer);
@@ -241,14 +283,20 @@ export class CoolLedUxDisplay {
         for (const frame of parsed.frames) {
           notifications.push(frame);
           const view = byteView(frame);
-          if (!quiet) console.log(`📨 ${view.decimal.join(",")}`);
+          if (!quiet) console.log(`📨 notify "${label}" len=${frame.length} hex=${view.hex} dec=[${view.decimal.join(",")}]`);
         }
       };
       candidate.characteristic.on("data", onData);
-      await subscribeCharacteristic(candidate.characteristic);
+      try {
+        await subscribeCharacteristic(candidate.characteristic);
+        if (!quiet) console.log(`📨 subscribed "${label}"`);
+      } catch (error) {
+        console.warn(`⚠️ notify subscribe failed "${label}"`, error instanceof Error ? error.message : error);
+      }
     }
 
     if (!quiet) console.log(`📤 upload ${upload.compressedLength}B/${upload.rawProgramLength}B packets=${upload.packets.length}`);
+    const sendStartedAt = Date.now();
     try {
       const writeDelayMs = options.writeDelayMs ?? 50;
       const packetDelayMs = options.packetDelayMs ?? 300;
@@ -256,16 +304,27 @@ export class CoolLedUxDisplay {
         const packet = upload.packets[packetIndex];
         const bleWrites = splitBleWrites(packet, 20);
         if (!quiet) console.log(`📦 ${packetIndex + 1}/${upload.packets.length} ${packet.length}B ${bleWrites.length} writes`);
-        for (const chunk of bleWrites) {
-          await writeCharacteristic(candidate.characteristic, chunk, true);
+        for (let writeIndex = 0; writeIndex < bleWrites.length; writeIndex += 1) {
+          const chunk = bleWrites[writeIndex];
+          try {
+            await writeCharacteristic(candidate.characteristic, chunk, true);
+          } catch (error) {
+            console.warn(
+              `⚠️ write failed "${label}" packet=${packetIndex + 1}/${upload.packets.length} write=${writeIndex + 1}/${bleWrites.length}`,
+              error instanceof Error ? error.message : error
+            );
+            throw error;
+          }
           if (writeDelayMs > 0) await sleepMs(writeDelayMs);
         }
         if (packetDelayMs > 0) await sleepMs(packetDelayMs);
       }
 
+      const writeMs = Date.now() - sendStartedAt;
+      console.log(`📤 sent "${label}" ${writeMs}ms ${upload.compressedLength}B/${upload.rawProgramLength}B packets=${upload.packets.length}`);
       const settleMs = options.settleMs ?? 3000;
       if (settleMs > 0) await new Promise((resolve) => setTimeout(resolve, settleMs));
-      if (!quiet) console.log(`✅ "${label}" notifications=${notifications.length}`);
+      if (!quiet || notifications.length > 0) console.log(`✅ "${label}" notifications=${notifications.length}`);
     } finally {
       if (onData) candidate.characteristic.removeListener("data", onData);
     }

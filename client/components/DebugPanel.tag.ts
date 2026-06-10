@@ -1,4 +1,5 @@
-import { details, div, p, pre, span, strong, subscribe, summary, tag } from "taggedjs";
+import { details, div, input, label, p, pre, span, strong, subscribe, summary, tag } from "taggedjs";
+import { actions } from "../controller.js";
 import { rotation$ } from "../state.js";
 
 export const DebugPanel = tag(() =>
@@ -30,6 +31,17 @@ export const DebugPanel = tag(() =>
               strong(label),
               span(String(value))
             )
+          ),
+          label.class`debug-card`(
+            strong("Display Seconds"),
+            input
+              .type("number")
+              .attr("min", "3")
+              .attr("step", "1")
+              .value((_: unknown) => String(payload?.rotation?.rotationSeconds ?? 3))
+              .onChange((event: Event) => {
+                void actions.setDisplaySeconds(Number((event.target as HTMLInputElement).value));
+              })()
           )
         ),
         pre.class`debug`(payload ? JSON.stringify(payload, null, 2) : "")
