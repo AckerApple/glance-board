@@ -240,6 +240,31 @@ test("calendar cards compact standalone AND in titles to ampersands", async () =
   assert.equal(card.matrixLines[1], "MOM & DAD DIN");
 });
 
+test("calendar cards remove spaces around dashes in titles", async () => {
+  const provider = new ICloudCalendarProvider({
+    async getUpcomingEvents() {
+      return [{
+        id: "event",
+        provider: "icloud",
+        calendarId: "family",
+        title: "Pickup - Practice",
+        startTime: "2026-06-09T18:00:00.000Z",
+        isAllDay: false
+      }];
+    }
+  });
+
+  const card = await provider.resolve({
+    id: "icloud-calendar-next-1",
+    enabled: true,
+    type: "icloud-calendar-next-event",
+    eventIndex: 0
+  });
+
+  assert.equal(card.readableLines[1], "PICKUP-PRACTI");
+  assert.equal(card.matrixLines[1], "PICKUP-PRACTI");
+});
+
 test("installing iCloud cards preserves Google and other rotation items", async () => {
   const storage = createMemoryStorage({
     rotationSeconds: 10,

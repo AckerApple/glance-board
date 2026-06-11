@@ -97,7 +97,7 @@ function drawCalendarIcon(matrix: PixelMatrix, scheduledDate: string | undefined
 
   fillRect(matrix, 0, 0, 16, 6, "red");
   fillRect(matrix, 0, 6, 16, 10, "white");
-  drawTinyText(matrix, day, 2, 1, "white");
+  drawTinyTextCutout(matrix, day, 2, 1);
   drawDateCutout(matrix, dayOfMonth, dayOfMonth.length === 1 ? 5 : 2, 8);
 }
 
@@ -498,7 +498,7 @@ function drawCalendarIcon16x96(matrix: PixelMatrix16x96, scheduledDate: string |
 
   fillRect16x96(matrix, 0, 0, 16, 6, "red");
   fillRect16x96(matrix, 0, 6, 16, 10, "white");
-  drawTinyText16x96(matrix, day, 2, 1, "white");
+  drawTinyTextCutout16x96(matrix, day, 2, 1);
   drawDateCutout16x96(matrix, dayOfMonth, dayOfMonth.length === 1 ? 5 : 2, 8);
 }
 
@@ -515,6 +515,15 @@ function drawTinyText16x96(matrix: PixelMatrix16x96, text: string, x: number, y:
   for (const character of text.toUpperCase().slice(0, 3)) {
     const glyph = TINY_FONT[character] ?? TINY_FONT["?"];
     drawTinyGlyph16x96(matrix, glyph, cursor, y, color);
+    cursor += 4;
+  }
+}
+
+function drawTinyTextCutout16x96(matrix: PixelMatrix16x96, text: string, x: number, y: number): void {
+  let cursor = x;
+  for (const character of text.toUpperCase().slice(0, 3)) {
+    const glyph = TINY_FONT[character] ?? TINY_FONT["?"];
+    drawTinyGlyphCutout16x96(matrix, glyph, cursor, y);
     cursor += 4;
   }
 }

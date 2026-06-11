@@ -27,6 +27,43 @@ test("renders display cards as a stable 16x96 matrix", () => {
   assert.ok(matrix.flat().some((pixel) => pixel !== "off"));
 });
 
+test("renders calendar icon weekday as cutout pixels", () => {
+  const card: NormalizedDisplayCard = {
+    id: "icloud-calendar-next-1",
+    enabled: true,
+    type: "icloud-calendar-next-event",
+    title: "iCloud 1",
+    status: "live",
+    readableLines: ["9:00A", "SCHOOL"],
+    matrixLines: ["9:00A", "SCHOOL"],
+    calendar: {
+      sourceType: "icloud-calendar",
+      status: "ready",
+      title: "School",
+      dateLabel: "TUE",
+      timeLabel: "9:00A",
+      shortTitle: "SCHOOL",
+      eventIndex: 0,
+      isBirthday: false,
+      event: {
+        id: "event",
+        provider: "icloud",
+        calendarId: "family",
+        title: "School",
+        startTime: "2026-06-09T09:00:00.000Z",
+        isAllDay: false
+      }
+    }
+  };
+
+  const matrix = renderDisplayCardToDisplayMatrix16x96(card);
+
+  assert.equal(matrix[1][2], "off");
+  assert.equal(matrix[1][6], "off");
+  assert.equal(matrix[1][10], "off");
+  assert.equal(matrix[0][2], "red");
+});
+
 test("rejects invalid matrix dimensions", () => {
   const matrix = createMatrix16x96();
   matrix[0].pop();

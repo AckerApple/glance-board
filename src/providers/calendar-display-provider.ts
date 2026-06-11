@@ -150,7 +150,9 @@ function shortEventTitle(title: string, length = 6): string {
 }
 
 function sanitizeCalendarTitle(title: string): string {
-  return sanitizeDisplayText(title, "EVENT", { preserveAmpersand: true }).replace(/\bAND\b/g, "&");
+  return sanitizeDisplayText(title, "EVENT", { preserveAmpersand: true })
+    .replace(/\bAND\b/g, "&")
+    .replace(/\s+-\s+/g, "-");
 }
 
 function isBirthdayEvent(title: string): boolean {
