@@ -63,3 +63,77 @@ test("reuses resolved display items until their refresh interval expires", async
   assert.deepEqual(second.cards[0].readableLines, ["weather 1"]);
   assert.equal(second.items[0].refreshIntervalSeconds, 300);
 });
+
+test("skips transient fetch error cards with no cached value", async () => {
+  const items: DisplayItemConfig[] = [
+    { id: "weather", enabled: true, type: "weather-current" },
+    { id: "date", enabled: true, type: "date-time" }
+  ];
+  const resolver = {
+    async resolve(item: DisplayItemConfig): Promise<NormalizedDisplayCard> {
+      if (item.id === "weather") {
+        return {
+          ...item,
+          title: item.id,
+          status: "error",
+          readableLines: ["DISPLAY", "ERROR"],
+          matrixLines: ["DISPLAY", "ERROR"],
+          error: "Weather API fetch failed: fetch failed"
+        };
+      }
+
+      return {
+        ...item,
+        title: item.id,
+        status: "live",
+        readableLines: [item.id],
+        matrixLines: [item.id]
+      };
+    }
+  };
+  const engine = new RotationEngine(resolver, async () => ({ rotationSeconds: 10, items }));
+
+  const state = await engine.refresh();
+
+  assert.deepEqual(state.cards.map((card) => card.id), ["date"]);
+  assert.equal(state.items.find((item) => item.id === "weather")?.resolved, false);
+});
+
+test("uses stale cached card when transient fetch refresh fails", async () => {
+  let shouldFail = false;
+  const items: DisplayItemConfig[] = [
+    { id: "weather", enabled: true, type: "weather-current" }
+  ];
+  const resolver = {
+    async resolve(item: DisplayItemConfig): Promise<NormalizedDisplayCard> {
+      if (shouldFail) {
+        return {
+          ...item,
+          title: item.id,
+          status: "error",
+          readableLines: ["DISPLAY", "ERROR"],
+          matrixLines: ["DISPLAY", "ERROR"],
+          error: "Weather API fetch failed: fetch failed"
+        };
+      }
+
+      return {
+        ...item,
+        title: item.id,
+        status: "live",
+        readableLines: ["weather ok"],
+        matrixLines: ["weather ok"]
+      };
+    }
+  };
+  const engine = new RotationEngine(resolver, async () => ({ rotationSeconds: 10, items }), 0);
+
+  const first = await engine.refresh();
+  shouldFail = true;
+  items[0] = { ...items[0], zip: "33066" };
+  const second = await engine.refresh();
+
+  assert.deepEqual(first.cards[0].readableLines, ["weather ok"]);
+  assert.deepEqual(second.cards[0].readableLines, ["weather ok"]);
+  assert.equal(second.items[0].resolved, true);
+});

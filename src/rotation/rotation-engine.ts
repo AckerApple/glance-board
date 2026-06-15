@@ -26,7 +26,7 @@ export class RotationEngine {
     const config = await this.loadConfig();
     const enabledItems = config.items.filter((item) => item.enabled);
     const nowMs = Date.now();
-    const cards = await Promise.all(enabledItems.map((item) => this.resolveWithCache(item, nowMs)));
+    const cards = (await Promise.all(enabledItems.map((item) => this.resolveWithCache(item, nowMs)))).filter((card): card is NormalizedDisplayCard => Boolean(card));
     this.latestCards = cards;
     this.activeIndex = normalizeIndex(this.activeIndex, cards.length);
     const lastUpdated = new Date(nowMs).toISOString();
@@ -77,7 +77,7 @@ export class RotationEngine {
     }
   }
 
-  private async resolveWithCache(item: DisplayItemConfig, nowMs: number): Promise<NormalizedDisplayCard> {
+  private async resolveWithCache(item: DisplayItemConfig, nowMs: number): Promise<NormalizedDisplayCard | undefined> {
     const cached = this.cache.get(item.id);
     const configSignature = JSON.stringify(item);
     const refreshMs = refreshIntervalSecondsForItem(item) * 1000;
@@ -85,15 +85,34 @@ export class RotationEngine {
       return cached.card;
     }
 
-    const card = await this.resolver.resolve(item);
-    this.cache.set(item.id, { card, item, configSignature, updatedAtMs: nowMs });
-    return card;
+    try {
+      const card = await this.resolver.resolve(item);
+      if (isTransientFetchCard(card)) {
+        return this.fallbackCardForFetchFailure(item, cached, card.error);
+      }
+
+      this.cache.set(item.id, { card, item, configSignature, updatedAtMs: nowMs });
+      return card;
+    } catch (error) {
+      return this.fallbackCardForFetchFailure(item, cached, errorDetail(error));
+    }
   }
 
   private cacheAgeMinutes(id: string, nowMs: number): number | undefined {
     const cached = this.cache.get(id);
     if (!cached) return undefined;
     return Math.max(0, Math.floor((nowMs - cached.updatedAtMs) / 60_000));
+  }
+
+  private fallbackCardForFetchFailure(item: DisplayItemConfig, cached: CachedCard | undefined, error: string | undefined): NormalizedDisplayCard | undefined {
+    const detail = error ?? "fetch failed";
+    if (cached) {
+      console.warn(`⚠️ ${item.id} fetch failed; using stale card: ${detail}`);
+      return cached.card;
+    }
+
+    console.warn(`⚠️ ${item.id} fetch failed; skipping slide: ${detail}`);
+    return undefined;
   }
 }
 
@@ -110,4 +129,18 @@ function refreshIntervalSecondsForItem(item: DisplayItemConfig): number {
   if (item.type === "date-time") return 45;
   if (item.type === "fuel-average") return 15 * 60;
   return DEFAULT_REFRESH_INTERVAL_SECONDS;
+}
+
+function isTransientFetchCard(card: NormalizedDisplayCard): boolean {
+  return card.status === "error" && isTransientFetchError(card.error);
+}
+
+function isTransientFetchError(message: string | undefined): boolean {
+  return /\b(fetch failed|network|enotfound|eai_again|etimedout|econn|und_err|socket|dns)\b/i.test(message ?? "");
+}
+
+function errorDetail(error: unknown): string {
+  if (!(error instanceof Error)) return String(error);
+  const cause = error.cause instanceof Error ? `; cause=${error.cause.message}` : "";
+  return `${error.message}${cause}`;
 }

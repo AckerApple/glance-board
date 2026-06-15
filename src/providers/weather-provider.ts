@@ -49,11 +49,16 @@ export class WeatherProvider {
     url.searchParams.set("hourly", "precipitation_probability,precipitation,rain");
     url.searchParams.set("daily", "temperature_2m_max,temperature_2m_min");
 
-    const response = await this.fetchImpl(url.toString(), {
-      headers: {
-        accept: "application/json"
-      }
-    });
+    let response: Response;
+    try {
+      response = await this.fetchImpl(url.toString(), {
+        headers: {
+          accept: "application/json"
+        }
+      });
+    } catch (error) {
+      throw new Error(`Weather API fetch failed (${url.toString()}): ${errorDetail(error)}`);
+    }
 
     if (!response.ok) {
       throw new Error(`Weather API returned HTTP ${response.status}`);
@@ -110,6 +115,12 @@ export class WeatherProvider {
       raw
     };
   }
+}
+
+function errorDetail(error: unknown): string {
+  if (!(error instanceof Error)) return String(error);
+  const cause = error.cause instanceof Error ? `; cause=${error.cause.message}` : "";
+  return `${error.message}${cause}`;
 }
 
 function getWeatherPoint(config: DisplayItemConfig): WeatherPoint {

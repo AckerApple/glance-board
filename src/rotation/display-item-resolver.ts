@@ -65,20 +65,27 @@ export class DisplayItemResolver {
         raw: hasRaw(resolved) ? resolved.raw : undefined
       };
     } catch (error) {
+      const title = titleForConfig(config);
       return {
         id: config.id,
         enabled: config.enabled,
         type: config.type,
         categoryId: config.categoryId,
         league: config.league,
-        title: titleForConfig(config),
+        title,
         status: "error",
         readableLines: ["DISPLAY", "ERROR"],
         matrixLines: ["DISPLAY", "ERROR"],
-        error: error instanceof Error ? error.message : String(error)
+        error: `${title} resolve failed: ${errorDetail(error)}`
       };
     }
   }
+}
+
+function errorDetail(error: unknown): string {
+  if (!(error instanceof Error)) return String(error);
+  const cause = error.cause instanceof Error ? `; cause=${error.cause.message}` : "";
+  return `${error.message}${cause}`;
 }
 
 function hasGame(value: unknown): value is { game?: NormalizedGameScore } {

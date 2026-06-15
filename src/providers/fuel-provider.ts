@@ -64,11 +64,16 @@ export class FuelProvider {
     }
 
     try {
-      const response = await this.fetchImpl(url.toString(), {
-        headers: {
-          accept: "text/html"
-        }
-      });
+      let response: Response;
+      try {
+        response = await this.fetchImpl(url.toString(), {
+          headers: {
+            accept: "text/html"
+          }
+        });
+      } catch (error) {
+        throw new Error(`AAA gas prices fetch failed (${url.toString()}): ${errorDetail(error)}`);
+      }
 
       if (!response.ok) {
         warnFuelLookup("AAA gas prices returned a non-OK response", {
@@ -136,6 +141,12 @@ export class FuelProvider {
       throw cachedError;
     }
   }
+}
+
+function errorDetail(error: unknown): string {
+  if (!(error instanceof Error)) return String(error);
+  const cause = error.cause instanceof Error ? `; cause=${error.cause.message}` : "";
+  return `${error.message}${cause}`;
 }
 
 function getFuelArea(config: DisplayItemConfig): FuelArea {
