@@ -8,6 +8,7 @@ export type DisplayItemType =
   | "weather-current"
   | "moon-phase"
   | "fuel-average"
+  | "internet-status"
   | "date-time"
   | "google-calendar-next-event"
   | "icloud-calendar-next-event";
@@ -69,6 +70,18 @@ export interface DateTimeData {
   scheduledDate: string;
 }
 
+export type InternetConnectionType = "wifi" | "ethernet" | "unknown";
+
+export interface InternetStatusData {
+  online: boolean;
+  connectionType: InternetConnectionType;
+  interfaceName?: string;
+  latencyMs?: number;
+  downloadMbps?: number;
+  uploadMbps?: number;
+  checkedAt: string;
+}
+
 export interface NormalizedCalendarEvent {
   id: string;
   provider?: "google" | "icloud";
@@ -109,6 +122,7 @@ export interface NormalizedDisplayCard {
   game?: NormalizedGameScore;
   moon?: MoonPhaseData;
   weather?: WeatherData;
+  internet?: InternetStatusData;
   dateTime?: DateTimeData;
   calendar?: CalendarDisplayData;
   error?: string;

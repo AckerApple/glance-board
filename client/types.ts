@@ -47,6 +47,15 @@ export interface DisplayCard {
     weatherCode?: number;
     isSunny?: boolean;
   };
+  internet?: {
+    online?: boolean;
+    connectionType?: "wifi" | "ethernet" | "unknown";
+    interfaceName?: string;
+    latencyMs?: number;
+    downloadMbps?: number;
+    uploadMbps?: number;
+    checkedAt?: string;
+  };
   dateTime?: unknown;
   calendar?: unknown;
   debug?: Record<string, unknown>;

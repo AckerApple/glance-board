@@ -63,6 +63,9 @@ export function renderDisplayCardToDisplayMatrix16x96(card: NormalizedDisplayCar
   if (card.type === "fuel-average") {
     return renderFuelCardToMatrix16x96(card);
   }
+  if (card.type === "internet-status") {
+    return renderInternetStatusCardToMatrix16x96(card);
+  }
 
   return renderTextCardToMatrix16x96(card);
 }
@@ -244,6 +247,24 @@ function renderFuelCardToMatrix16x96(card: NormalizedDisplayCard): PixelMatrix16
   const dieselText = fuelLine.slice(dieselStart);
   drawText16x96(matrix, regularText, 3, 8, "red");
   drawText16x96(matrix, dieselText, 3 + dieselStart * 6, 8, "green");
+
+  return matrix;
+}
+
+function renderInternetStatusCardToMatrix16x96(card: NormalizedDisplayCard): PixelMatrix16x96 {
+  const matrix = createMatrix16x96();
+  const [line1 = "", line2 = ""] = card.matrixLines;
+  const online = Boolean(card.internet?.online);
+  const iconColor: PixelColor16x96 = online ? "green" : "red";
+
+  if (card.internet?.connectionType === "ethernet") {
+    drawEthernetIcon(matrix, 1, 2, iconColor);
+  } else {
+    drawWifiIcon(matrix, 1, 2, iconColor);
+  }
+
+  drawText16x96(matrix, fitDisplayLine(line1, 12), 21, 0, online ? "green" : "red");
+  drawText16x96(matrix, fitDisplayLine(line2, 12), 21, 8, "white");
 
   return matrix;
 }
@@ -444,6 +465,44 @@ function drawWeatherSunIcon(matrix: PixelMatrix16x96, x: number, y: number): voi
 
   for (const [px, py] of [[5, 5], [7, 5], [6, 6]]) {
     setPixel16x96(matrix, x + px, y + py, "orange");
+  }
+}
+
+function drawWifiIcon(matrix: PixelMatrix16x96, x: number, y: number, color: PixelColor16x96): void {
+  const pixels = [
+    [0, 2], [1, 2], [12, 2], [13, 2],
+    [2, 3], [3, 3], [10, 3], [11, 3],
+    [4, 4], [5, 4], [8, 4], [9, 4],
+    [3, 7], [4, 7], [9, 7], [10, 7],
+    [5, 8], [6, 8], [7, 8], [8, 8],
+    [6, 11], [7, 11],
+    [6, 12], [7, 12]
+  ];
+
+  for (const [px, py] of pixels) {
+    setPixel16x96(matrix, x + px, y + py, color);
+  }
+}
+
+function drawEthernetIcon(matrix: PixelMatrix16x96, x: number, y: number, color: PixelColor16x96): void {
+  const pixels = [
+    [4, 0], [5, 0], [8, 0], [9, 0],
+    [4, 1], [5, 1], [8, 1], [9, 1],
+    [2, 2], [3, 2], [4, 2], [5, 2], [8, 2], [9, 2], [10, 2], [11, 2],
+    [2, 3], [11, 3],
+    [0, 4], [1, 4], [2, 4], [11, 4], [12, 4], [13, 4],
+    [0, 5], [13, 5],
+    [0, 6], [13, 6],
+    [0, 7], [13, 7],
+    [1, 8], [12, 8],
+    [2, 9], [3, 9], [10, 9], [11, 9],
+    [4, 10], [5, 10], [6, 10], [7, 10], [8, 10], [9, 10],
+    [6, 11], [7, 11],
+    [6, 12], [7, 12]
+  ];
+
+  for (const [px, py] of pixels) {
+    setPixel16x96(matrix, x + px, y + py, color);
   }
 }
 

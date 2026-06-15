@@ -2,6 +2,7 @@ import { SportsProvider } from "../providers/sports-provider.js";
 import { WeatherProvider } from "../providers/weather-provider.js";
 import { MoonProvider } from "../providers/moon-provider.js";
 import { FuelProvider } from "../providers/fuel-provider.js";
+import { InternetStatusProvider } from "../providers/internet-status-provider.js";
 import { DateTimeProvider } from "../providers/date-time-provider.js";
 import { GoogleCalendarProvider } from "../providers/google-calendar-provider.js";
 import { GoogleCalendarService } from "../providers/google-calendar-service.js";
@@ -17,6 +18,7 @@ export class DisplayItemResolver {
     private readonly weatherProvider = new WeatherProvider(),
     private readonly moonProvider = new MoonProvider(),
     private readonly fuelProvider = new FuelProvider(),
+    private readonly internetStatusProvider = new InternetStatusProvider(),
     private readonly dateTimeProvider = new DateTimeProvider(),
     private readonly googleCalendarProvider = new GoogleCalendarProvider(new GoogleCalendarService(Number(process.env.PORT) || 3010)),
     private readonly icloudCalendarProvider = new ICloudCalendarProvider(new ICloudCalendarService())
@@ -31,13 +33,15 @@ export class DisplayItemResolver {
             ? this.moonProvider.resolve(config)
             : config.type === "fuel-average"
               ? await this.fuelProvider.resolve(config)
-            : config.type === "date-time"
-              ? this.dateTimeProvider.resolve(config)
-              : config.type === "google-calendar-next-event"
-                ? await this.googleCalendarProvider.resolve(config)
-                : config.type === "icloud-calendar-next-event"
-                  ? await this.icloudCalendarProvider.resolve(config)
-                : await this.sportsProvider.resolve(config);
+              : config.type === "internet-status"
+                ? await this.internetStatusProvider.resolve(config)
+                : config.type === "date-time"
+                  ? this.dateTimeProvider.resolve(config)
+                  : config.type === "google-calendar-next-event"
+                    ? await this.googleCalendarProvider.resolve(config)
+                    : config.type === "icloud-calendar-next-event"
+                      ? await this.icloudCalendarProvider.resolve(config)
+                      : await this.sportsProvider.resolve(config);
       const game = hasGame(resolved) ? resolved.game : undefined;
       const calendar = hasCalendar(resolved) ? resolved.calendar : undefined;
       return {
@@ -50,6 +54,7 @@ export class DisplayItemResolver {
         status:
           game?.status ??
           (config.type === "weather-current" || config.type === "moon-phase" || config.type === "fuel-average" || config.type === "date-time"
+            || config.type === "internet-status"
             ? "live"
             : config.type === "google-calendar-next-event" || config.type === "icloud-calendar-next-event"
               ? calendarStatusToGameStatus(calendar?.status)
@@ -59,6 +64,7 @@ export class DisplayItemResolver {
         game,
         moon: hasMoon(resolved) ? resolved.moon : undefined,
         weather: hasWeather(resolved) ? resolved.weather : undefined,
+        internet: hasInternet(resolved) ? resolved.internet : undefined,
         dateTime: hasDateTime(resolved) ? resolved.dateTime : undefined,
         calendar,
         debug: resolved.debug,
@@ -93,6 +99,10 @@ function hasWeather(value: unknown): value is { weather: NormalizedDisplayCard["
   return typeof value === "object" && value !== null && "weather" in value;
 }
 
+function hasInternet(value: unknown): value is { internet: NormalizedDisplayCard["internet"] } {
+  return typeof value === "object" && value !== null && "internet" in value;
+}
+
 function hasDateTime(value: unknown): value is { dateTime: NormalizedDisplayCard["dateTime"] } {
   return typeof value === "object" && value !== null && "dateTime" in value;
 }
@@ -109,6 +119,7 @@ function titleForConfig(config: DisplayItemConfig): string {
   if (config.type === "weather-current") return sanitizeDisplayText(`Weather ${config.zip ?? ""}`.trim());
   if (config.type === "moon-phase") return "MOON PHASE";
   if (config.type === "fuel-average") return sanitizeDisplayText(`Gas Avg ${config.zip ?? ""}`.trim());
+  if (config.type === "internet-status") return "INTERNET";
   if (config.type === "date-time") return "DATE TIME";
   if (config.type === "google-calendar-next-event") return sanitizeDisplayText(`Calendar ${Number(config.eventIndex ?? 0) + 1}`);
   if (config.type === "icloud-calendar-next-event") return sanitizeDisplayText(`iCloud ${Number(config.eventIndex ?? 0) + 1}`);

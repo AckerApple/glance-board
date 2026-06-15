@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { DateTimeProvider } from "../src/providers/date-time-provider.js";
 import { FuelProvider } from "../src/providers/fuel-provider.js";
+import { InternetStatusProvider } from "../src/providers/internet-status-provider.js";
 import { MoonProvider } from "../src/providers/moon-provider.js";
 import { SportsProvider } from "../src/providers/sports-provider.js";
 import { WeatherProvider } from "../src/providers/weather-provider.js";
@@ -99,6 +100,50 @@ test("fuel provider caches successful AAA lookups", async () => {
   await provider.resolve(config);
 
   assert.equal(fetchCount, 1);
+});
+
+test("internet status provider reports latency, throughput, and connection type", async () => {
+  const provider = new InternetStatusProvider(
+    async (_url, init) => {
+      const bytes = init?.method === "POST" ? 2 : 1_000_000;
+      return new Response(Buffer.alloc(bytes), { status: 200 }) as unknown as Response;
+    },
+    async () => ({ connectionType: "wifi", interfaceName: "en0" })
+  );
+
+  const result = await provider.resolve({
+    id: "internet-status",
+    enabled: true,
+    type: "internet-status"
+  });
+
+  assert.equal(result.internet.online, true);
+  assert.equal(result.internet.connectionType, "wifi");
+  assert.equal(result.internet.interfaceName, "en0");
+  assert.equal(typeof result.internet.latencyMs, "number");
+  assert.equal(typeof result.internet.downloadMbps, "number");
+  assert.equal(typeof result.internet.uploadMbps, "number");
+  assert.deepEqual(result.matrixLines.length, 2);
+  assert.match(result.matrixLines[0], /ONLINE/);
+});
+
+test("internet status provider returns an offline slide when latency check fails", async () => {
+  const provider = new InternetStatusProvider(
+    async () => {
+      throw new Error("network unavailable");
+    },
+    async () => ({ connectionType: "ethernet", interfaceName: "en5" })
+  );
+
+  const result = await provider.resolve({
+    id: "internet-status",
+    enabled: true,
+    type: "internet-status"
+  });
+
+  assert.equal(result.internet.online, false);
+  assert.equal(result.internet.connectionType, "ethernet");
+  assert.deepEqual(result.readableLines, ["OFFLINE", "D-- U--"]);
 });
 
 test("NBA live score falls back to the upcoming game when no game is live", async () => {

@@ -36,6 +36,28 @@ test("resolves enabled items only and preserves equal rotation order", async () 
   assert.equal(engine.next()?.id, "one");
 });
 
+test("internet status items refresh every five minutes", async () => {
+  const items: DisplayItemConfig[] = [
+    { id: "internet-status", enabled: true, type: "internet-status" }
+  ];
+  const resolver = {
+    async resolve(item: DisplayItemConfig): Promise<NormalizedDisplayCard> {
+      return {
+        ...item,
+        title: item.id,
+        status: "live",
+        readableLines: ["ONLINE"],
+        matrixLines: ["ONLINE"]
+      };
+    }
+  };
+  const engine = new RotationEngine(resolver, async () => ({ rotationSeconds: 10, items }));
+
+  const state = await engine.refresh();
+
+  assert.equal(state.items[0].refreshIntervalSeconds, 300);
+});
+
 test("reuses resolved display items until their refresh interval expires", async () => {
   let resolveCount = 0;
   const items: DisplayItemConfig[] = [

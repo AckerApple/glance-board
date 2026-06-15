@@ -107,6 +107,7 @@ function refreshIntervalSecondsForItem(item: DisplayItemConfig): number {
   if (item.type === "sports-next-game") return 30 * 60;
   if (item.type === "moon-phase") return 60 * 60;
   if (item.type === "weather-current") return 5 * 60;
+  if (item.type === "internet-status") return 5 * 60;
   if (item.type === "date-time") return 45;
   if (item.type === "fuel-average") return 15 * 60;
   return DEFAULT_REFRESH_INTERVAL_SECONDS;

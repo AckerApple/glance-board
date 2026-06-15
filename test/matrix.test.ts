@@ -170,6 +170,60 @@ test("renders cloudy weather with a cloud icon", () => {
   assert.ok(!iconPixels.includes("yellow"));
 });
 
+test("renders internet status with a wifi icon", () => {
+  const card: NormalizedDisplayCard = {
+    id: "internet-status",
+    enabled: true,
+    type: "internet-status",
+    title: "Internet",
+    status: "live",
+    readableLines: ["12MS ONLINE", "D100 U25"],
+    matrixLines: ["12MS ONLINE", "D100 U25"],
+    internet: {
+      online: true,
+      connectionType: "wifi",
+      interfaceName: "en0",
+      latencyMs: 12,
+      downloadMbps: 100,
+      uploadMbps: 25,
+      checkedAt: "2026-06-15T12:00:00.000Z"
+    }
+  };
+
+  const matrix = renderDisplayCardToDisplayMatrix16x96(card);
+  const iconPixels = matrix.slice(2, 15).flatMap((row) => row.slice(1, 15));
+  const textPixels = matrix.slice(0, 15).flatMap((row) => row.slice(21, 96));
+
+  assert.ok(iconPixels.includes("green"));
+  assert.ok(textPixels.includes("green"));
+  assert.ok(textPixels.includes("white"));
+});
+
+test("renders offline internet status with an ethernet icon", () => {
+  const card: NormalizedDisplayCard = {
+    id: "internet-status",
+    enabled: true,
+    type: "internet-status",
+    title: "Internet",
+    status: "live",
+    readableLines: ["OFFLINE", "D-- U--"],
+    matrixLines: ["OFFLINE", "D-- U--"],
+    internet: {
+      online: false,
+      connectionType: "ethernet",
+      interfaceName: "en5",
+      checkedAt: "2026-06-15T12:00:00.000Z"
+    }
+  };
+
+  const matrix = renderDisplayCardToDisplayMatrix16x96(card);
+  const iconPixels = matrix.slice(2, 15).flatMap((row) => row.slice(1, 15));
+  const textPixels = matrix.slice(0, 8).flatMap((row) => row.slice(21, 96));
+
+  assert.ok(iconPixels.includes("red"));
+  assert.ok(textPixels.includes("red"));
+});
+
 test("renders a cake icon for birthday calendar events", () => {
   const card: NormalizedDisplayCard = {
     id: "icloud-calendar-next-1",
