@@ -145,7 +145,7 @@ export async function startRotatingDisplayServer(port: number): Promise<Rotating
     const paceForTick = rotationPace;
     let completedSuccessfully = false;
     try {
-      const [state, rotation] = await Promise.all([fetchNbaDisplayState(), rotationEngine.refresh()]);
+      const [state, rotation] = await Promise.all([fetchNbaDisplayStateSafe(latestState), rotationEngine.refresh()]);
       latestState = state;
       latestRotation = rotation;
       const currentCard = activeCardId ? rotation.cards.find((candidate) => candidate.id === activeCardId) : undefined;
@@ -445,6 +445,12 @@ function formatDelay(delayMs: number): string {
   return `${Math.round(delayMs / 1000)}s`;
 }
 
+function errorDetail(error: unknown): string {
+  if (!(error instanceof Error)) return String(error);
+  const cause = error.cause instanceof Error ? `; cause=${error.cause.message}` : "";
+  return `${error.message}${cause}`;
+}
+
 function rotationSkipReason(inFlight: boolean, autoSend: boolean, paused: boolean, ready: boolean): string {
   if (inFlight) return "tick busy";
   if (!autoSend) return "rotation off";
@@ -655,7 +661,7 @@ async function handleScoreApi(
   paused: boolean,
   effectiveRotationSeconds?: (normalSeconds: number) => number
 ): Promise<{ legacyState: NbaDisplayState; rotation: RotationDisplayState }> {
-  const [state, rotation] = await Promise.all([fetchNbaDisplayState(), rotationEngine.refresh()]);
+  const [state, rotation] = await Promise.all([fetchNbaDisplayStateSafe(), rotationEngine.refresh()]);
   if (effectiveRotationSeconds) rotation.rotationSeconds = effectiveRotationSeconds(rotation.rotationSeconds);
   if (preferredCardId) {
     const activeCard = rotationEngine.select(preferredCardId);
@@ -668,6 +674,31 @@ async function handleScoreApi(
   sendJson(response, payload);
 
   return { legacyState: state, rotation };
+}
+
+async function fetchNbaDisplayStateSafe(fallback?: NbaDisplayState): Promise<NbaDisplayState> {
+  try {
+    return await fetchNbaDisplayState();
+  } catch (error) {
+    const detail = errorDetail(error);
+    log("⚠️", `NBA display fetch failed: ${detail}`);
+    if (fallback) return { ...fallback, error: detail };
+    return offlineNbaDisplayState(detail);
+  }
+}
+
+function offlineNbaDisplayState(error: string): NbaDisplayState {
+  return {
+    mode: "live_score",
+    lastUpdated: new Date().toISOString(),
+    error,
+    debug: {
+      todayEvents: 0,
+      scheduleEvents: 0,
+      finalsEvents: 0,
+      fetchedDates: []
+    }
+  };
 }
 
 function buildScoreResponse(state: NbaDisplayState, fallbackGame: NormalizedGameScore, rotation: RotationDisplayState): NbaScoreResponse & { rotation: RotationDisplayState } {

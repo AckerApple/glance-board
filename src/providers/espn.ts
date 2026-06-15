@@ -57,17 +57,28 @@ export async function fetchScoreboardWindow(league: SportsLeague, daysAhead = 14
 }
 
 async function fetchScoreboardUrl(url: string, fetchImpl: typeof fetch): Promise<unknown> {
-  const response = await fetchImpl(url, {
-    headers: {
-      accept: "application/json"
-    }
-  });
+  let response: Response;
+  try {
+    response = await fetchImpl(url, {
+      headers: {
+        accept: "application/json"
+      }
+    });
+  } catch (error) {
+    throw new Error(`ESPN scoreboard fetch failed (${url}): ${errorDetail(error)}`);
+  }
 
   if (!response.ok) {
-    throw new Error(`ESPN scoreboard returned HTTP ${response.status}`);
+    throw new Error(`ESPN scoreboard returned HTTP ${response.status} (${url})`);
   }
 
   return response.json();
+}
+
+function errorDetail(error: unknown): string {
+  if (!(error instanceof Error)) return String(error);
+  const cause = error.cause instanceof Error ? `; cause=${error.cause.message}` : "";
+  return `${error.message}${cause}`;
 }
 
 export async function fetchNbaDisplayState(fetchImpl: typeof fetch = fetch, daysAhead = 14): Promise<NbaDisplayState> {
