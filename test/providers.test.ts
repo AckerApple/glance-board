@@ -125,6 +125,8 @@ test("internet status provider reports latency, throughput, and connection type"
   assert.equal(typeof result.internet.uploadMbps, "number");
   assert.deepEqual(result.matrixLines.length, 2);
   assert.match(result.matrixLines[0], /ONLINE/);
+  assert.match(result.readableLines[1], /^↓\d+Mb ↑\d+Mb$/);
+  assert.match(result.matrixLines[1], /^↓\d+MB ↑\d+MB$/);
 });
 
 test("internet status provider returns an offline slide when latency check fails", async () => {
@@ -143,7 +145,8 @@ test("internet status provider returns an offline slide when latency check fails
 
   assert.equal(result.internet.online, false);
   assert.equal(result.internet.connectionType, "ethernet");
-  assert.deepEqual(result.readableLines, ["OFFLINE", "D-- U--"]);
+  assert.deepEqual(result.readableLines, ["OFFLINE", "↓--Mb ↑--Mb"]);
+  assert.deepEqual(result.matrixLines, ["OFFLINE", "↓--MB ↑--MB"]);
 });
 
 test("NBA live score falls back to the upcoming game when no game is live", async () => {

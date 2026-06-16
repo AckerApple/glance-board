@@ -150,9 +150,8 @@ async function toggleRotationPause(): Promise<void> {
   updateRotation({ paused });
   restartRotation();
   try {
-    const payload = await postJson<{ paused: boolean }>("/api/rotation/pause", { paused });
-    updateRotation({ paused: payload.paused });
-    restartRotation();
+    const payload = await postJson<RotationPayload>("/api/rotation/pause", { paused });
+    applyRotation(payload);
   } catch (error) {
     updateRotation({ error: `Pause failed: ${errorMessage(error)}` });
   }
@@ -168,10 +167,17 @@ async function setDisplaySeconds(seconds: number): Promise<void> {
   }
 }
 
-function selectCard(id: string): void {
-  updateRotation({ currentCardId: id, progress: 1 });
+async function selectCard(id: string): Promise<void> {
+  updateRotation({ currentCardId: id, progress: 1, error: undefined });
   resetRotationProgress();
   restartRotation();
+  try {
+    const payload = await postJson<RotationPayload>("/api/rotation/select", { cardId: id });
+    applyRotation(payload);
+    resetRotationProgress();
+  } catch (error) {
+    updateRotation({ error: `Show failed: ${errorMessage(error)}` });
+  }
 }
 
 function resetRotationProgress(): void {

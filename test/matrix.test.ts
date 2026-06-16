@@ -177,8 +177,8 @@ test("renders internet status with a wifi icon", () => {
     type: "internet-status",
     title: "Internet",
     status: "live",
-    readableLines: ["12MS ONLINE", "D100 U25"],
-    matrixLines: ["12MS ONLINE", "D100 U25"],
+    readableLines: ["12MS ONLINE", "↓100Mb ↑25Mb"],
+    matrixLines: ["12MS ONLINE", "↓100MB ↑25MB"],
     internet: {
       online: true,
       connectionType: "wifi",
@@ -192,22 +192,68 @@ test("renders internet status with a wifi icon", () => {
 
   const matrix = renderDisplayCardToDisplayMatrix16x96(card);
   const iconPixels = matrix.slice(2, 15).flatMap((row) => row.slice(1, 15));
-  const textPixels = matrix.slice(0, 15).flatMap((row) => row.slice(21, 96));
+  const firstLinePixels = matrix.slice(0, 7).flatMap((row) => row.slice(21, 96));
+  const downloadValuePixels = matrix.slice(8, 15).flatMap((row) => row.slice(21, 41));
+  const downloadUnitPixels = matrix.slice(8, 15).flatMap((row) => row.slice(41, 51));
+  const uploadValuePixels = matrix.slice(8, 15).flatMap((row) => row.slice(58, 73));
+  const uploadUnitPixels = matrix.slice(8, 15).flatMap((row) => row.slice(73, 83));
 
   assert.ok(iconPixels.includes("green"));
-  assert.ok(textPixels.includes("green"));
-  assert.ok(textPixels.includes("white"));
+  assert.ok(firstLinePixels.includes("blue"));
+  assert.ok(!firstLinePixels.includes("green"));
+  assert.ok(downloadValuePixels.includes("yellow"));
+  assert.ok(downloadUnitPixels.includes("blue"));
+  assert.ok(!downloadUnitPixels.includes("yellow"));
+  assert.ok(uploadValuePixels.includes("yellow"));
+  assert.ok(uploadUnitPixels.includes("blue"));
+  assert.ok(!uploadUnitPixels.includes("yellow"));
 });
 
-test("renders offline internet status with an ethernet icon", () => {
+test("renders internet speed thresholds independently", () => {
   const card: NormalizedDisplayCard = {
     id: "internet-status",
     enabled: true,
     type: "internet-status",
     title: "Internet",
     status: "live",
-    readableLines: ["OFFLINE", "D-- U--"],
-    matrixLines: ["OFFLINE", "D-- U--"],
+    readableLines: ["12MS ONLINE", "↓101Mb ↑9Mb"],
+    matrixLines: ["12MS ONLINE", "↓101MB ↑9MB"],
+    internet: {
+      online: true,
+      connectionType: "wifi",
+      interfaceName: "en0",
+      latencyMs: 12,
+      downloadMbps: 101,
+      uploadMbps: 9,
+      checkedAt: "2026-06-15T12:00:00.000Z"
+    }
+  };
+
+  const matrix = renderDisplayCardToDisplayMatrix16x96(card);
+  const downloadValuePixels = matrix.slice(8, 15).flatMap((row) => row.slice(21, 41));
+  const downloadUnitPixels = matrix.slice(8, 15).flatMap((row) => row.slice(41, 51));
+  const uploadValuePixels = matrix.slice(8, 15).flatMap((row) => row.slice(58, 68));
+  const uploadUnitPixels = matrix.slice(8, 15).flatMap((row) => row.slice(68, 78));
+
+  assert.ok(downloadValuePixels.includes("green"));
+  assert.ok(!downloadValuePixels.includes("yellow"));
+  assert.ok(downloadUnitPixels.includes("blue"));
+  assert.ok(!downloadUnitPixels.includes("green"));
+  assert.ok(uploadValuePixels.includes("red"));
+  assert.ok(!uploadValuePixels.includes("yellow"));
+  assert.ok(uploadUnitPixels.includes("blue"));
+  assert.ok(!uploadUnitPixels.includes("red"));
+});
+
+test("renders offline internet status with an ethernet icon and red speed stats", () => {
+  const card: NormalizedDisplayCard = {
+    id: "internet-status",
+    enabled: true,
+    type: "internet-status",
+    title: "Internet",
+    status: "live",
+    readableLines: ["OFFLINE", "↓--Mb ↑--Mb"],
+    matrixLines: ["OFFLINE", "↓--MB ↑--MB"],
     internet: {
       online: false,
       connectionType: "ethernet",
@@ -219,9 +265,15 @@ test("renders offline internet status with an ethernet icon", () => {
   const matrix = renderDisplayCardToDisplayMatrix16x96(card);
   const iconPixels = matrix.slice(2, 15).flatMap((row) => row.slice(1, 15));
   const textPixels = matrix.slice(0, 8).flatMap((row) => row.slice(21, 96));
+  const speedValuePixels = matrix.slice(8, 15).flatMap((row) => [...row.slice(21, 36), ...row.slice(58, 73)]);
+  const speedUnitPixels = matrix.slice(8, 15).flatMap((row) => [...row.slice(36, 46), ...row.slice(73, 83)]);
 
   assert.ok(iconPixels.includes("red"));
-  assert.ok(textPixels.includes("red"));
+  assert.ok(textPixels.includes("blue"));
+  assert.ok(!textPixels.includes("red"));
+  assert.ok(speedValuePixels.includes("red"));
+  assert.ok(speedUnitPixels.includes("blue"));
+  assert.ok(!speedUnitPixels.includes("red"));
 });
 
 test("renders a cake icon for birthday calendar events", () => {

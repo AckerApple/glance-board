@@ -82,6 +82,7 @@ function parsedDataForCard(card: DisplayCard): Record<string, unknown> {
     matrixLines: card.matrixLines,
     game: card.game,
     weather: card.weather,
+    internet: card.internet,
     moon: card.moon,
     dateTime: card.dateTime,
     calendar: card.calendar,

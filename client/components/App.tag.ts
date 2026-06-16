@@ -12,11 +12,11 @@ export const App = tag(() =>
   main(
     Header(),
     hr(),
+    ActiveDisplay(),
+    hr(),
     ConfiguredItems(),
     hr(),
     LocationControls(),
-    hr(),
-    ActiveDisplay(),
     hr(),
     HardwareControls(),
     hr(),

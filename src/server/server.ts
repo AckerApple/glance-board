@@ -279,13 +279,38 @@ export async function startRotatingDisplayServer(port: number): Promise<Rotating
         return;
       }
 
+      if (url.pathname === "/api/rotation/select" && request.method === "POST") {
+        const body = await readJsonBody(request);
+        const cardId = typeof body.cardId === "string" ? body.cardId : "";
+        if (!cardId) {
+          response.writeHead(400, { "content-type": "application/json" });
+          response.end(JSON.stringify({ error: "cardId is required" }));
+          return;
+        }
+
+        const currentRotation = await rotationEngine.refresh();
+        if (!currentRotation.cards.some((card) => card.id === cardId)) {
+          response.writeHead(404, { "content-type": "application/json" });
+          response.end(JSON.stringify({ error: `Display card not found: ${cardId}` }));
+          return;
+        }
+
+        const handled = await handleScoreApi(response, display, rotationEngine, cardId, rotationPaused, displaySeconds);
+        activeCardId = cardId;
+        latestState = handled.legacyState;
+        latestRotation = handled.rotation;
+        scheduleBackendRotation();
+        return;
+      }
+
       if (url.pathname === "/api/rotation/pause" && request.method === "POST") {
         const body = await readJsonBody(request);
         rotationPaused = Boolean(body.paused);
-        if (latestRotation) latestRotation = { ...latestRotation, paused: rotationPaused };
+        const handled = await handleScoreApi(response, display, rotationEngine, activeCardId, rotationPaused, displaySeconds);
+        latestState = handled.legacyState;
+        latestRotation = handled.rotation;
         if (rotationPaused) stopBackendRotation();
         else scheduleBackendRotation();
-        sendJson(response, { paused: rotationPaused });
         return;
       }
 

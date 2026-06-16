@@ -11,7 +11,7 @@ const REPLACEMENTS: Record<string, string> = {
   "‘": "'"
 };
 
-const SUPPORTED_DISPLAY_TEXT = /[^A-Z0-9 .:<>\-^%&']/g;
+const SUPPORTED_DISPLAY_TEXT = /[^A-Z0-9 .:<>\-^%&'↑↓]/g;
 
 export function sanitizeDisplayText(value: string, fallback = " ", options: SanitizeDisplayTextOptions = {}): string {
   const replaced = value

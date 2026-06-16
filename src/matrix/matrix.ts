@@ -2,6 +2,7 @@ import { createEmptyMatrix, drawText, PixelColor, PixelMatrix, setPixel } from "
 import {
   createMatrix16x96,
   drawText as drawText16x96,
+  drawTightText as drawTightText16x96,
   PixelColor as PixelColor16x96,
   PixelMatrix as PixelMatrix16x96,
   setPixel as setPixel16x96
@@ -263,10 +264,33 @@ function renderInternetStatusCardToMatrix16x96(card: NormalizedDisplayCard): Pix
     drawWifiIcon(matrix, 1, 2, iconColor);
   }
 
-  drawText16x96(matrix, fitDisplayLine(line1, 12), 21, 0, online ? "green" : "red");
-  drawText16x96(matrix, fitDisplayLine(line2, 12), 21, 8, "white");
+  drawText16x96(matrix, fitDisplayLine(line1, 12), 21, 0, "blue");
+  if (card.internet) {
+    drawInternetSpeedText(matrix, "↓", card.internet.downloadMbps, 21);
+    drawInternetSpeedText(matrix, "↑", card.internet.uploadMbps, 58);
+  } else {
+    drawTightText16x96(matrix, fitDisplayLine(line2, 13), 21, 8, "white");
+  }
 
   return matrix;
+}
+
+function drawInternetSpeedText(matrix: PixelMatrix16x96, arrow: "↓" | "↑", value: number | undefined, x: number): void {
+  const speedText = `${arrow}${formatInternetMbps(value)}`;
+  drawTightText16x96(matrix, speedText, x, 8, speedColor(value));
+  drawTightText16x96(matrix, "MB", x + speedText.length * 5, 8, "blue");
+}
+
+function formatInternetMbps(value: number | undefined): string {
+  if (value === undefined) return "--";
+  return String(Math.max(0, Math.min(999, Math.round(value))));
+}
+
+function speedColor(value: number | undefined): PixelColor16x96 {
+  if (value === undefined) return "red";
+  if (value > 100) return "green";
+  if (value >= 10) return "yellow";
+  return "red";
 }
 
 function renderWeatherCardToMatrix16x96(card: NormalizedDisplayCard): PixelMatrix16x96 {

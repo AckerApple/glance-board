@@ -2,7 +2,7 @@ import { execFile } from "node:child_process";
 import { networkInterfaces } from "node:os";
 import { promisify } from "node:util";
 import { DisplayItemConfig, InternetConnectionType } from "../rotation/types.js";
-import { fitDisplayLine, sanitizeDisplayLines } from "../matrix/text-sanitizer.js";
+import { fitDisplayLine } from "../matrix/text-sanitizer.js";
 
 const execFileAsync = promisify(execFile);
 const DEFAULT_LATENCY_URL = "https://speed.cloudflare.com/cdn-cgi/trace";
@@ -44,7 +44,7 @@ export class InternetStatusProvider {
     const latency = await measureLatency(this.fetchImpl, latencyUrl());
 
     if (!latency.ok) {
-      const lines = sanitizeDisplayLines(["OFFLINE", "D-- U--"]);
+      const lines = ["OFFLINE", "↓--Mb ↑--Mb"];
       return {
         internet: {
           online: false,
@@ -67,10 +67,10 @@ export class InternetStatusProvider {
     ]);
     const downloadMbps = download.mbps;
     const uploadMbps = upload.mbps;
-    const lines = sanitizeDisplayLines([
+    const lines = [
       `${latency.latencyMs}MS ONLINE`,
-      `D${formatMbps(downloadMbps)} U${formatMbps(uploadMbps)}`
-    ]);
+      `↓${formatMbps(downloadMbps)}Mb ↑${formatMbps(uploadMbps)}Mb`
+    ];
 
     return {
       internet: {
@@ -162,9 +162,7 @@ function roundTenths(value: number): number {
 
 function formatMbps(value: number | undefined): string {
   if (value === undefined) return "--";
-  if (value >= 100) return String(Math.round(value));
-  if (value >= 10) return String(Math.round(value));
-  return value.toFixed(1);
+  return String(Math.max(0, Math.min(999, Math.round(value))));
 }
 
 async function detectActiveInterface(): Promise<InterfaceDetails> {
