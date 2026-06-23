@@ -21,6 +21,7 @@ const FAST_ROTATION_SECONDS = 3;
 const DISPLAY_VERBOSE = process.env.GLANCEBOARD_DISPLAY_VERBOSE === "true";
 
 type RotationPace = "normal" | "fast";
+type RotationPayload = NbaScoreResponse & { rotation: RotationDisplayState };
 
 export interface RotatingDisplayServer {
   url: string;
@@ -42,6 +43,7 @@ export async function startRotatingDisplayServer(port: number): Promise<Rotating
   let reconnectAttempts = 0;
   let reconnectInFlight = false;
   let autoReconnectEnabled = true;
+  const rotationEventClients = new Set<http.ServerResponse>();
   const rotationEngine = new RotationEngine();
   const googleCalendar = new GoogleCalendarService(port);
   const icloudCalendar = new ICloudCalendarService();
@@ -100,6 +102,16 @@ export async function startRotatingDisplayServer(port: number): Promise<Rotating
   const stopBackendRotation = () => {
     if (rotationTimer) clearTimeout(rotationTimer);
     rotationTimer = undefined;
+  };
+
+  const broadcastRotation = (state = latestState, rotation = latestRotation) => {
+    if (!state || !rotation) return;
+    const fallbackGame = state.currentGame ?? state.nextGame ?? noGameState();
+    const payload = buildScoreResponse(state, fallbackGame, rotation);
+    for (const client of rotationEventClients) {
+      client.write(`event: rotation\n`);
+      client.write(`data: ${JSON.stringify(payload)}\n\n`);
+    }
   };
 
   display.onUnexpectedDisconnect(() => {
@@ -169,6 +181,7 @@ export async function startRotatingDisplayServer(port: number): Promise<Rotating
         log("⚠️", "no cards");
       }
       latestRotation = { ...rotation, paused: rotationPaused };
+      if (completedSuccessfully) broadcastRotation(state, latestRotation);
     } catch (error) {
       log("⚠️", error instanceof Error ? error.message : String(error));
     } finally {
@@ -223,6 +236,21 @@ export async function startRotatingDisplayServer(port: number): Promise<Rotating
     try {
       const url = new URL(request.url ?? "/", `http://${request.headers.host ?? "localhost"}`);
 
+      if (url.pathname === "/api/rotation/events") {
+        response.writeHead(200, {
+          "content-type": "text/event-stream",
+          "cache-control": "no-store",
+          connection: "keep-alive"
+        });
+        response.write(": connected\n\n");
+        rotationEventClients.add(response);
+        request.on("close", () => {
+          rotationEventClients.delete(response);
+        });
+        broadcastRotation();
+        return;
+      }
+
       if (url.pathname === "/api/rotation" || url.pathname === "/api/nba-score") {
         if (url.searchParams.get("refresh") === "calendar") invalidateCalendarRotation(rotationEngine);
         const handled = await handleScoreApi(response, display, rotationEngine, activeCardId, rotationPaused, displaySeconds);
@@ -247,6 +275,7 @@ export async function startRotatingDisplayServer(port: number): Promise<Rotating
         latestState = handled.legacyState;
         latestRotation = handled.rotation;
         scheduleBackendRotation();
+        broadcastRotation();
         return;
       }
 
@@ -265,6 +294,7 @@ export async function startRotatingDisplayServer(port: number): Promise<Rotating
         latestState = handled.legacyState;
         latestRotation = handled.rotation;
         scheduleBackendRotation();
+        broadcastRotation();
         return;
       }
 
@@ -276,6 +306,7 @@ export async function startRotatingDisplayServer(port: number): Promise<Rotating
         latestState = handled.legacyState;
         latestRotation = handled.rotation;
         scheduleBackendRotation(displaySecondsOverride * 1000);
+        broadcastRotation();
         return;
       }
 
@@ -300,6 +331,7 @@ export async function startRotatingDisplayServer(port: number): Promise<Rotating
         latestState = handled.legacyState;
         latestRotation = handled.rotation;
         scheduleBackendRotation();
+        broadcastRotation();
         return;
       }
 
@@ -311,6 +343,7 @@ export async function startRotatingDisplayServer(port: number): Promise<Rotating
         latestRotation = handled.rotation;
         if (rotationPaused) stopBackendRotation();
         else scheduleBackendRotation();
+        broadcastRotation();
         return;
       }
 
@@ -440,6 +473,8 @@ export async function startRotatingDisplayServer(port: number): Promise<Rotating
     close: async () => {
       stopBackendRotation();
       stopReconnect();
+      for (const client of rotationEventClients) client.end();
+      rotationEventClients.clear();
       await new Promise<void>((resolve, reject) => server.close((error) => (error ? reject(error) : resolve())));
       await vite?.close();
     }
@@ -685,7 +720,7 @@ async function handleScoreApi(
   preferredCardId: string | undefined,
   paused: boolean,
   effectiveRotationSeconds?: (normalSeconds: number) => number
-): Promise<{ legacyState: NbaDisplayState; rotation: RotationDisplayState }> {
+): Promise<{ legacyState: NbaDisplayState; rotation: RotationDisplayState; payload: RotationPayload }> {
   const [state, rotation] = await Promise.all([fetchNbaDisplayStateSafe(), rotationEngine.refresh()]);
   if (effectiveRotationSeconds) rotation.rotationSeconds = effectiveRotationSeconds(rotation.rotationSeconds);
   if (preferredCardId) {
@@ -698,7 +733,7 @@ async function handleScoreApi(
 
   sendJson(response, payload);
 
-  return { legacyState: state, rotation };
+  return { legacyState: state, rotation, payload };
 }
 
 async function fetchNbaDisplayStateSafe(fallback?: NbaDisplayState): Promise<NbaDisplayState> {
@@ -726,7 +761,7 @@ function offlineNbaDisplayState(error: string): NbaDisplayState {
   };
 }
 
-function buildScoreResponse(state: NbaDisplayState, fallbackGame: NormalizedGameScore, rotation: RotationDisplayState): NbaScoreResponse & { rotation: RotationDisplayState } {
+function buildScoreResponse(state: NbaDisplayState, fallbackGame: NormalizedGameScore, rotation: RotationDisplayState): RotationPayload {
   const activeCard = rotation.activeCard;
   return {
     state,

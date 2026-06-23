@@ -192,3 +192,71 @@ test("NBA live score falls back to the upcoming game when no game is live", asyn
   assert.equal(result.readableLines.includes("NO NBA"), false);
   assert.equal(result.readableLines[1], "BOS AT MIA");
 });
+
+test("MLB next game can be scoped to the Miami Marlins", async () => {
+  const provider = new SportsProvider(async () => new Response(JSON.stringify({
+    events: [{
+      id: "mlb-marlins-next",
+      name: "Miami Marlins at Atlanta Braves",
+      shortName: "MIA @ ATL",
+      date: "2099-07-10T23:20:00.000Z",
+      competitions: [{
+        status: {
+          type: {
+            state: "pre",
+            name: "STATUS_SCHEDULED",
+            description: "Scheduled"
+          }
+        },
+        competitors: [
+          {
+            homeAway: "away",
+            team: { abbreviation: "MIA", displayName: "Miami Marlins" }
+          },
+          {
+            homeAway: "home",
+            team: { abbreviation: "ATL", displayName: "Atlanta Braves" }
+          }
+        ]
+      }]
+    }, {
+      id: "mlb-other-next",
+      name: "New York Mets at Philadelphia Phillies",
+      shortName: "NYM @ PHI",
+      date: "2099-07-10T22:05:00.000Z",
+      competitions: [{
+        status: {
+          type: {
+            state: "pre",
+            name: "STATUS_SCHEDULED",
+            description: "Scheduled"
+          }
+        },
+        competitors: [
+          {
+            homeAway: "away",
+            team: { abbreviation: "NYM", displayName: "New York Mets" }
+          },
+          {
+            homeAway: "home",
+            team: { abbreviation: "PHI", displayName: "Philadelphia Phillies" }
+          }
+        ]
+      }]
+    }]
+  }), { status: 200, headers: { "content-type": "application/json" } }) as unknown as Response);
+
+  const result = await provider.resolve({
+    id: "miami-marlins-next",
+    enabled: true,
+    type: "sports-next-game",
+    league: "mlb",
+    team: "MIA"
+  });
+
+  assert.equal(result.game?.league, "MLB");
+  assert.equal(result.game?.shortName, "MIA @ ATL");
+  assert.equal(result.readableLines[0].startsWith("MLB "), true);
+  assert.equal(result.readableLines[1], "MIA AT ATL");
+  assert.equal(result.matrixLines[1], "MIA AT ATL");
+});

@@ -29,7 +29,7 @@ npm run check
 
 ## Configuration
 
-Rotation is controlled by `config/display-items.json`. The example configuration includes a 10-second rotation for NBA, NHL, NFL, local weather, current date/time, moon phase, and fuel averages.
+Rotation is controlled by `config/display-items.json`. The example configuration includes a 10-second rotation for NBA, NHL, NFL, MLB, local weather, current date/time, moon phase, and fuel averages.
 
 Each item has an `enabled` flag. Disabled items stay in the file but are not resolved or displayed.
 

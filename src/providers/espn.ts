@@ -4,13 +4,15 @@ import { fitDisplayLine, sanitizeDisplayText } from "../matrix/text-sanitizer.js
 const ESPN_SCOREBOARD_URLS: Record<SportsLeague, string> = {
   nba: "https://site.api.espn.com/apis/site/v2/sports/basketball/nba/scoreboard",
   nhl: "https://site.api.espn.com/apis/site/v2/sports/hockey/nhl/scoreboard",
-  nfl: "https://site.api.espn.com/apis/site/v2/sports/football/nfl/scoreboard"
+  nfl: "https://site.api.espn.com/apis/site/v2/sports/football/nfl/scoreboard",
+  mlb: "https://site.api.espn.com/apis/site/v2/sports/baseball/mlb/scoreboard"
 };
 
 const LEAGUE_LABELS: Record<SportsLeague, LeagueLabel> = {
   nba: "NBA",
   nhl: "NHL",
-  nfl: "NFL"
+  nfl: "NFL",
+  mlb: "MLB"
 };
 
 type UnknownRecord = Record<string, unknown>;

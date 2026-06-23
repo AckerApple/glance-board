@@ -1,7 +1,7 @@
 export type GameStatus = "loading" | "scheduled" | "live" | "final" | "postponed" | "no_game" | "error" | "not_configured";
 export type NbaDisplayMode = "live_score" | "next_game";
-export type SportsLeague = "nba" | "nhl" | "nfl";
-export type LeagueLabel = "NBA" | "NHL" | "NFL";
+export type SportsLeague = "nba" | "nhl" | "nfl" | "mlb";
+export type LeagueLabel = "NBA" | "NHL" | "NFL" | "MLB";
 export type DisplayItemType =
   | "sports-live-score"
   | "sports-next-game"

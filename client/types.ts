@@ -82,6 +82,7 @@ export interface RotationPayload {
     items?: DisplayItem[];
     cards?: DisplayCard[];
     activeCard?: DisplayCard;
+    debug?: Record<string, unknown>;
   };
 }
 

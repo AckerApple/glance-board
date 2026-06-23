@@ -30,6 +30,7 @@ let pollTimer: number | undefined;
 let hardwareStatusTimer: number | undefined;
 let rotateTimer: number | undefined;
 let progressTimer: number | undefined;
+let rotationEvents: EventSource | undefined;
 let rotateSeconds: number | undefined;
 let rotateStartedAt = 0;
 
@@ -67,6 +68,7 @@ async function start(): Promise<void> {
   await Promise.all([refreshDisplayStatus(), refreshLocation(), refreshCalendar(), refreshICloudCalendar()]);
   startHardwareStatusPolling();
   await loadBrowserSettings();
+  startRotationEvents();
   await pollRotation();
 }
 
@@ -76,6 +78,8 @@ function stop(): void {
   if (hardwareStatusTimer) window.clearInterval(hardwareStatusTimer);
   if (rotateTimer) window.clearInterval(rotateTimer);
   if (progressTimer) window.clearInterval(progressTimer);
+  rotationEvents?.close();
+  rotationEvents = undefined;
 }
 
 async function pollRotation(): Promise<void> {
@@ -94,15 +98,30 @@ async function refreshRotation(refreshCalendar = false): Promise<void> {
   applyRotation(payload);
 }
 
-function applyRotation(payload: RotationPayload): void {
+function applyRotation(payload: RotationPayload, options: { preferBackendActive?: boolean } = {}): void {
   const backendActiveId = payload.rotation?.activeCard?.id;
-  const preferred = hardware$[0]?.autoSend ? backendActiveId : rotation$[0]?.currentCardId;
+  const preferred = hardware$[0]?.autoSend || options.preferBackendActive ? backendActiveId : rotation$[0]?.currentCardId;
   const cards = availableCards(payload);
   const currentCardId = cards.some((card) => card.id === preferred)
     ? preferred
     : backendActiveId ?? cards[0]?.id;
   updateRotation({ payload, currentCardId, paused: Boolean(payload.rotation?.paused), error: undefined });
   restartRotation();
+}
+
+function startRotationEvents(): void {
+  rotationEvents?.close();
+  rotationEvents = new EventSource("/api/rotation/events");
+  rotationEvents.addEventListener("rotation", (event) => {
+    try {
+      applyRotation(JSON.parse(event.data) as RotationPayload, { preferBackendActive: true });
+    } catch (error) {
+      updateRotation({ error: `Rotation stream failed: ${errorMessage(error)}` });
+    }
+  });
+  rotationEvents.onerror = () => {
+    updateRotation({ error: "Rotation stream disconnected; polling is still active" });
+  };
 }
 
 function startHardwareStatusPolling(): void {
@@ -114,7 +133,7 @@ function startHardwareStatusPolling(): void {
 
 function restartRotation(): void {
   const seconds = rotation$[0]?.payload?.rotation?.rotationSeconds ?? 5;
-  if (rotation$[0]?.paused) {
+  if (rotation$[0]?.paused || hardware$[0]?.autoSend) {
     if (rotateTimer) window.clearInterval(rotateTimer);
     rotateTimer = undefined;
     rotateSeconds = undefined;
@@ -239,6 +258,7 @@ async function refreshDisplayStatus(): Promise<void> {
 
 function setAutoSend(enabled: boolean): void {
   updateHardware({ autoSend: enabled });
+  restartRotation();
   void saveBrowserSettings({ autoSendRotation: enabled });
   void runDisplayAction("/api/display/auto-send", { enabled });
 }
