@@ -1,0 +1,104 @@
+{
+  "rotationSeconds": 10,
+  "categories": [
+    {
+      "id": "sports",
+      "label": "Sports",
+      "icon": "sports"
+    },
+    {
+      "id": "calendar",
+      "label": "Calendar",
+      "icon": "calendar"
+    },
+    {
+      "id": "local-info",
+      "label": "Local Info",
+      "icon": "local-info"
+    },
+    {
+      "id": "time",
+      "label": "Time",
+      "icon": "time"
+    },
+    {
+      "id": "moon",
+      "label": "Moon",
+      "icon": "moon"
+    }
+  ],
+  "items": [
+    {
+      "id": "nba-finals-live",
+      "enabled": true,
+      "categoryId": "sports",
+      "type": "sports-live-score",
+      "league": "nba",
+      "mode": "finals"
+    },
+    {
+      "id": "nba-finals-next",
+      "enabled": true,
+      "categoryId": "sports",
+      "type": "sports-next-game",
+      "league": "nba",
+      "mode": "finals"
+    },
+    {
+      "id": "nhl-stanley-cup-next",
+      "enabled": true,
+      "categoryId": "sports",
+      "type": "sports-next-game",
+      "league": "nhl",
+      "mode": "finals"
+    },
+    {
+      "id": "miami-dolphins-next",
+      "enabled": true,
+      "categoryId": "sports",
+      "type": "sports-next-game",
+      "league": "nfl",
+      "team": "MIA"
+    },
+    {
+      "id": "miami-marlins-next",
+      "enabled": true,
+      "categoryId": "sports",
+      "type": "sports-next-game",
+      "league": "mlb",
+      "team": "MIA"
+    },
+    {
+      "id": "local-weather",
+      "enabled": true,
+      "categoryId": "local-info",
+      "type": "weather-current",
+      "zip": "33066"
+    },
+    {
+      "id": "current-date-time",
+      "enabled": true,
+      "categoryId": "time",
+      "type": "date-time"
+    },
+    {
+      "id": "moon-phase",
+      "enabled": true,
+      "categoryId": "moon",
+      "type": "moon-phase"
+    },
+    {
+      "id": "local-fuel-average",
+      "enabled": true,
+      "categoryId": "local-info",
+      "type": "fuel-average",
+      "zip": "33066"
+    },
+    {
+      "id": "internet-status",
+      "enabled": true,
+      "categoryId": "local-info",
+      "type": "internet-status"
+    }
+  ]
+}

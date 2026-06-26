@@ -4,7 +4,12 @@ export type PixelMatrix = PixelColor[][];
 export interface DisplayItem {
   id: string;
   enabled: boolean;
+  type?: string;
   categoryId?: string;
+  league?: string;
+  mode?: string;
+  team?: string;
+  zip?: string;
   resolved?: boolean;
   error?: string;
   lastUpdated?: string;

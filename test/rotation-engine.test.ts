@@ -34,6 +34,7 @@ test("resolves enabled items only and preserves equal rotation order", async () 
   assert.equal(state.activeCard?.id, "one");
   assert.equal(engine.next()?.id, "two");
   assert.equal(engine.next()?.id, "one");
+  assert.equal(engine.nextAfter("one")?.id, "two");
 });
 
 test("internet status items refresh every five minutes", async () => {
@@ -159,3 +160,85 @@ test("uses stale cached card when transient fetch refresh fails", async () => {
   assert.deepEqual(second.cards[0].readableLines, ["weather ok"]);
   assert.equal(second.items[0].resolved, true);
 });
+
+test("advances from the last displayed card id after refresh", async () => {
+  const items: DisplayItemConfig[] = [
+    { id: "one", enabled: true, type: "date-time" },
+    { id: "two", enabled: true, type: "moon-phase" },
+    { id: "three", enabled: true, type: "fuel-average" }
+  ];
+  const resolver = {
+    async resolve(item: DisplayItemConfig): Promise<NormalizedDisplayCard> {
+      return cardFor(item);
+    }
+  };
+  const engine = new RotationEngine(resolver, async () => ({ rotationSeconds: 10, items }));
+
+  await engine.refresh();
+  assert.equal(engine.nextAfter("three")?.id, "one");
+});
+
+test("returns stale cached cards while one background refresh runs at a time", async () => {
+  let resolveCount = 0;
+  let nowMs = 0;
+  let releaseBackground: (() => void) | undefined;
+  const items: DisplayItemConfig[] = [
+    { id: "weather", enabled: true, type: "weather-current" },
+    { id: "internet", enabled: true, type: "internet-status" }
+  ];
+  const resolver = {
+    async resolve(item: DisplayItemConfig): Promise<NormalizedDisplayCard> {
+      resolveCount += 1;
+      if (resolveCount > 2) {
+        await new Promise<void>((resolve) => {
+          releaseBackground = resolve;
+        });
+      }
+      return {
+        ...item,
+        title: item.id,
+        status: "live",
+        readableLines: [`${item.id} ${resolveCount}`],
+        matrixLines: [`${item.id} ${resolveCount}`]
+      };
+    }
+  };
+  const engine = new RotationEngine(resolver, async () => ({ rotationSeconds: 10, items }), 15, () => nowMs);
+
+  await engine.refresh();
+  nowMs = 5 * 60 * 1000;
+  const staleRefresh = await engine.refresh();
+
+  assert.deepEqual(staleRefresh.cards.map((card) => card.readableLines[0]), ["weather 1", "internet 2"]);
+  await eventually(() => assert.equal(resolveCount, 3));
+
+  await Promise.resolve();
+  assert.equal(resolveCount, 3);
+
+  releaseBackground?.();
+  await eventually(() => assert.equal(resolveCount, 4));
+});
+
+function cardFor(item: DisplayItemConfig): NormalizedDisplayCard {
+  return {
+    ...item,
+    title: item.id,
+    status: "live",
+    readableLines: [item.id],
+    matrixLines: [item.id]
+  };
+}
+
+async function eventually(assertion: () => void): Promise<void> {
+  let lastError: unknown;
+  for (let attempt = 0; attempt < 20; attempt += 1) {
+    try {
+      assertion();
+      return;
+    } catch (error) {
+      lastError = error;
+      await new Promise((resolve) => setTimeout(resolve, 5));
+    }
+  }
+  throw lastError;
+}

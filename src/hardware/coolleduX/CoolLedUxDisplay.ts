@@ -86,11 +86,11 @@ type UploadTimingOptions = {
 };
 
 const ANIMATION_UPLOAD_OPTIONS: UploadTimingOptions = {
-  packetDelayMs: 0,
+  packetDelayMs: 120,
   quiet: true,
-  settleMs: 0,
+  settleMs: 300,
   subscribe: false,
-  writeDelayMs: 0
+  writeDelayMs: 12
 };
 
 const MULTIFRAME_UPLOAD_OPTIONS: UploadTimingOptions = {
@@ -111,7 +111,11 @@ export class CoolLedUxDisplay {
   private uploadQueue: Promise<void> = Promise.resolve();
   intensity = 1;
 
-  constructor(private readonly options: { deviceName: string; deviceId?: string; width: number; height: number; onDisconnect?: () => void }) {}
+  constructor(private readonly options: { deviceName: string; deviceId?: string; width: number; height: number; onDisconnect?: () => void }) {
+    noble.on("stateChange", (state) => {
+      if (state !== "poweredOn") this.handleTransportLost(`Bluetooth adapter state changed to "${state}"`);
+    });
+  }
 
   async scan(): Promise<DiscoveredDisplay[]> {
     await waitForPoweredOn();
@@ -146,11 +150,7 @@ export class CoolLedUxDisplay {
     this.peripheral = peripheral;
     peripheral.once("disconnect", () => {
       if (this.peripheral?.id !== peripheral.id) return;
-      console.log(`⚠️ display disconnected ${peripheral.advertisement.localName ?? peripheral.id}`);
-      this.peripheral = undefined;
-      this.services = [];
-      this.writable = undefined;
-      this.options.onDisconnect?.();
+      this.handleTransportLost(`display disconnected ${peripheral.advertisement.localName ?? peripheral.id}`);
     });
     console.log(`✅ ⚡️ connected ${this.peripheral.advertisement.localName ?? this.peripheral.id}`);
   }
@@ -166,6 +166,15 @@ export class CoolLedUxDisplay {
 
   isConnected(): boolean {
     return this.peripheral?.state === "connected";
+  }
+
+  private handleTransportLost(message: string): void {
+    if (!this.peripheral) return;
+    console.log(`⚠️ ${message}`);
+    this.peripheral = undefined;
+    this.services = [];
+    this.writable = undefined;
+    this.options.onDisconnect?.();
   }
 
   async inspect(): Promise<InspectionResult> {
@@ -296,6 +305,8 @@ export class CoolLedUxDisplay {
     }
 
     if (!quiet) console.log(`📤 upload ${upload.compressedLength}B/${upload.rawProgramLength}B packets=${upload.packets.length}`);
+    const writeWithoutResponse = shouldWriteWithoutResponse(candidate.characteristic.properties);
+    if (!quiet) console.log(`📡 write mode "${label}" ${writeWithoutResponse ? "without-response" : "acknowledged"}`);
     const sendStartedAt = Date.now();
     try {
       const writeDelayMs = options.writeDelayMs ?? 50;
@@ -307,7 +318,7 @@ export class CoolLedUxDisplay {
         for (let writeIndex = 0; writeIndex < bleWrites.length; writeIndex += 1) {
           const chunk = bleWrites[writeIndex];
           try {
-            await writeCharacteristic(candidate.characteristic, chunk, true);
+            await writeCharacteristic(candidate.characteristic, chunk, writeWithoutResponse);
           } catch (error) {
             console.warn(
               `⚠️ write failed "${label}" packet=${packetIndex + 1}/${upload.packets.length} write=${writeIndex + 1}/${bleWrites.length}`,
@@ -549,6 +560,10 @@ function printDisplayMatch(display: DiscoveredDisplay): void {
 
 function canNotifyLike(properties: string[]): boolean {
   return properties.includes("notify") || properties.includes("indicate");
+}
+
+export function shouldWriteWithoutResponse(properties: string[]): boolean {
+  return !properties.includes("write") && properties.includes("writeWithoutResponse");
 }
 
 function sleepMs(ms: number): Promise<void> {

@@ -7,7 +7,7 @@ export const ConfiguredItems = tag(() =>
     const items = state?.payload?.rotation?.items ?? [];
     const categories = state?.payload?.rotation?.categories ?? [];
     return section.attr("aria-label", "Configured display items")(
-      h2("⚙️ Configured Items"),
+      h2("⚙️ Display Items"),
       div.class`item-list`(
         items.map((item) => {
           const active = state?.currentCardId === item.id;
@@ -28,7 +28,8 @@ export const ConfiguredItems = tag(() =>
                 .onChange((event: Event) => {
                   void actions.setDisplayItemEnabled(item.id, (event.target as HTMLInputElement).checked);
                 })(),
-              strong(item.id)
+              strong(item.id),
+              span.class`item-detail`(displayItemDetail(item))
             ),
             statusControl,
             button
@@ -53,6 +54,10 @@ export const ConfiguredItems = tag(() =>
     );
   })
 );
+
+function displayItemDetail(item: { type?: string; league?: string; mode?: string; team?: string; zip?: string }): string {
+  return [item.type, item.league?.toUpperCase(), item.team, item.mode, item.zip].filter(Boolean).join(" · ");
+}
 
 function freshnessText(item: { enabled: boolean; lastUpdated?: string; refreshIntervalSeconds?: number }): string {
   if (!item.enabled) return "Not updating while disabled";

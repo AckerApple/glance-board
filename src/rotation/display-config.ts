@@ -11,13 +11,27 @@ const DEFAULT_CATEGORIES: DisplayCategoryConfig[] = [
   { id: "moon", label: "Moon", icon: "moon" }
 ];
 
+const BUILT_IN_DISPLAY_ITEMS: DisplayItemConfig[] = [
+  { id: "nba-finals-live", enabled: false, categoryId: "sports", type: "sports-live-score", league: "nba", mode: "finals" },
+  { id: "nba-finals-next", enabled: false, categoryId: "sports", type: "sports-next-game", league: "nba", mode: "finals" },
+  { id: "nhl-stanley-cup-next", enabled: false, categoryId: "sports", type: "sports-next-game", league: "nhl", mode: "finals" },
+  { id: "miami-dolphins-next", enabled: false, categoryId: "sports", type: "sports-next-game", league: "nfl", team: "MIA" },
+  { id: "miami-marlins-next", enabled: false, categoryId: "sports", type: "sports-next-game", league: "mlb", team: "MIA" },
+  { id: "local-weather", enabled: false, categoryId: "local-info", type: "weather-current", zip: "33066" },
+  { id: "current-date-time", enabled: false, categoryId: "time", type: "date-time" },
+  { id: "moon-phase", enabled: false, categoryId: "moon", type: "moon-phase" },
+  { id: "local-fuel-average", enabled: false, categoryId: "local-info", type: "fuel-average", zip: "33066" },
+  { id: "internet-status", enabled: false, categoryId: "local-info", type: "internet-status" }
+];
+
 export async function loadDisplayItemsConfig(configPath = process.env.DISPLAY_ITEMS_CONFIG ?? defaultConfigPath): Promise<DisplayItemsConfig> {
   const parsed = JSON.parse(await readFile(configPath, "utf8")) as DisplayItemsConfig;
   const categories = normalizeCategories(parsed.categories);
+  const configuredItems = Array.isArray(parsed.items) ? parsed.items : [];
   return {
     rotationSeconds: normalizeRotationSeconds(parsed.rotationSeconds),
     categories,
-    items: Array.isArray(parsed.items) ? parsed.items.map((item) => normalizeDisplayItemCategory(item, categories)) : []
+    items: mergeBuiltInDisplayItems(configuredItems).map((item) => normalizeDisplayItemCategory(item, categories))
   };
 }
 
@@ -56,6 +70,16 @@ function normalizeCategories(value: unknown): DisplayCategoryConfig[] {
   const merged = new Map(DEFAULT_CATEGORIES.map((category) => [category.id, category]));
   for (const category of supplied) merged.set(category.id, category);
   return [...merged.values()];
+}
+
+function mergeBuiltInDisplayItems(items: DisplayItemConfig[]): DisplayItemConfig[] {
+  const configuredById = new Map(items.map((item) => [item.id, item]));
+  const merged = BUILT_IN_DISPLAY_ITEMS.map((builtIn) => ({ ...builtIn, ...configuredById.get(builtIn.id) }));
+  const builtInIds = new Set(BUILT_IN_DISPLAY_ITEMS.map((item) => item.id));
+  return [
+    ...merged,
+    ...items.filter((item) => !builtInIds.has(item.id))
+  ];
 }
 
 function normalizeDisplayItemCategory(item: DisplayItemConfig, categories: DisplayCategoryConfig[]): DisplayItemConfig {

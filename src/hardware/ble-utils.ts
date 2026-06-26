@@ -274,9 +274,21 @@ export function subscribeCharacteristic(characteristic: Characteristic): Promise
   });
 }
 
-export function writeCharacteristic(characteristic: Characteristic, data: Buffer, withoutResponse: boolean): Promise<void> {
+export function writeCharacteristic(characteristic: Characteristic, data: Buffer, withoutResponse: boolean, timeoutMs = 10_000): Promise<void> {
   return new Promise((resolve, reject) => {
-    characteristic.write(data, withoutResponse, (error) => (error ? reject(new Error(error)) : resolve()));
+    let settled = false;
+    const timeout = setTimeout(() => {
+      if (settled) return;
+      settled = true;
+      reject(new Error(`Timed out writing BLE characteristic ${characteristic.uuid} after ${timeoutMs}ms`));
+    }, timeoutMs);
+    characteristic.write(data, withoutResponse, (error) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timeout);
+      if (error) reject(new Error(error));
+      else resolve();
+    });
   });
 }
 

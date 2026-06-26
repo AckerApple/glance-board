@@ -4,6 +4,7 @@ logs/
 .env.local
 .history/
 config/*
+!config/display-items.example.json
 config/display-items.json
 config/google-calendar.json
 config/google-calendar-credentials.json

@@ -14,7 +14,7 @@ test("date-time provider produces two display-safe lines", () => {
   );
   assert.equal(result.matrixLines.length, 2);
   assert.match(result.matrixLines[0], /:/);
-  assert.equal(result.matrixLines[1].trim(), "");
+  assert.equal(result.matrixLines[1], "JUNE 6");
 });
 
 test("moon provider returns bounded illumination and future full moon distance", () => {

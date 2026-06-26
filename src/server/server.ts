@@ -60,7 +60,7 @@ export async function startRotatingDisplayServer(port: number): Promise<Rotating
   };
 
   const scheduleReconnect = (delayMs = reconnectDelayMs(reconnectAttempts)) => {
-    if (!autoReconnectEnabled || display.isConnected() || reconnectInFlight) return;
+    if (!autoReconnectEnabled || display.isConnectedOrSending() || reconnectInFlight) return;
     if (reconnectTimer) return;
     log("🔌", `reconnect in ${formatDelay(delayMs)}`);
     reconnectTimer = setTimeout(() => {
@@ -70,8 +70,9 @@ export async function startRotatingDisplayServer(port: number): Promise<Rotating
   };
 
   const reconnectDisplay = async () => {
-    if (!autoReconnectEnabled || reconnectInFlight || display.isConnected()) return;
+    if (!autoReconnectEnabled || reconnectInFlight || display.isConnectedOrSending()) return;
     reconnectInFlight = true;
+    let shouldRetry = false;
     try {
       log("🔌", "connecting");
       const status = await display.connect();
@@ -84,19 +85,20 @@ export async function startRotatingDisplayServer(port: number): Promise<Rotating
 
       reconnectAttempts += 1;
       log("⚠️", status.lastMessage ?? "connect failed");
-      scheduleReconnect();
+      shouldRetry = true;
     } catch (error) {
       reconnectAttempts += 1;
       log("⚠️", error instanceof Error ? error.message : String(error));
-      scheduleReconnect();
+      shouldRetry = true;
     } finally {
       reconnectInFlight = false;
+      if (shouldRetry) scheduleReconnect();
     }
   };
 
   const enableAutoReconnect = () => {
     autoReconnectEnabled = true;
-    if (!display.isConnected()) scheduleReconnect(0);
+    if (!display.isConnectedOrSending()) scheduleReconnect(0);
   };
 
   const stopBackendRotation = () => {
@@ -161,7 +163,7 @@ export async function startRotatingDisplayServer(port: number): Promise<Rotating
       latestState = state;
       latestRotation = rotation;
       const currentCard = activeCardId ? rotation.cards.find((candidate) => candidate.id === activeCardId) : undefined;
-      const card = rotationEngine.next() ?? rotation.activeCard;
+      const card = rotationEngine.nextAfter(activeCardId) ?? rotation.activeCard;
       if (card) {
         log("✏️", currentCard && currentCard.id !== card.id ? `${currentCard.title} → ${card.title}` : card.title);
         const sendStartedAt = Date.now();

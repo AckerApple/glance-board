@@ -15,18 +15,21 @@ export class RotationEngine {
   private activeIndex = 0;
   private latestCards: NormalizedDisplayCard[] = [];
   private readonly cache = new Map<string, CachedCard>();
+  private readonly backgroundRefreshIds = new Set<string>();
+  private backgroundRefreshQueue: Promise<void> = Promise.resolve();
 
   constructor(
     private readonly resolver: Pick<DisplayItemResolver, "resolve"> = new DisplayItemResolver(),
     private readonly loadConfig: typeof loadDisplayItemsConfig = loadDisplayItemsConfig,
-    private readonly refreshIntervalSeconds = DEFAULT_REFRESH_INTERVAL_SECONDS
+    private readonly refreshIntervalSeconds = DEFAULT_REFRESH_INTERVAL_SECONDS,
+    private readonly nowMs = () => Date.now()
   ) {}
 
   async refresh(): Promise<RotationDisplayState> {
     const config = await this.loadConfig();
     const enabledItems = config.items.filter((item) => item.enabled);
-    const nowMs = Date.now();
-    const cards = (await Promise.all(enabledItems.map((item) => this.resolveWithCache(item, nowMs)))).filter((card): card is NormalizedDisplayCard => Boolean(card));
+    const nowMs = this.nowMs();
+    const cards = (await Promise.all(enabledItems.map((item) => this.resolveForRotation(item, nowMs)))).filter((card): card is NormalizedDisplayCard => Boolean(card));
     this.latestCards = cards;
     this.activeIndex = normalizeIndex(this.activeIndex, cards.length);
     const lastUpdated = new Date(nowMs).toISOString();
@@ -59,6 +62,14 @@ export class RotationEngine {
     return this.latestCards[this.activeIndex];
   }
 
+  nextAfter(id: string | undefined): NormalizedDisplayCard | undefined {
+    if (id) {
+      const index = this.latestCards.findIndex((card) => card.id === id);
+      if (index >= 0) this.activeIndex = index;
+    }
+    return this.next();
+  }
+
   select(id: string): NormalizedDisplayCard | undefined {
     const index = this.latestCards.findIndex((card) => card.id === id);
     if (index < 0) return undefined;
@@ -77,14 +88,19 @@ export class RotationEngine {
     }
   }
 
-  private async resolveWithCache(item: DisplayItemConfig, nowMs: number): Promise<NormalizedDisplayCard | undefined> {
+  private async resolveForRotation(item: DisplayItemConfig, nowMs: number): Promise<NormalizedDisplayCard | undefined> {
     const cached = this.cache.get(item.id);
     const configSignature = JSON.stringify(item);
     const refreshMs = refreshIntervalSecondsForItem(item) * 1000;
-    if (cached && cached.configSignature === configSignature && nowMs - cached.updatedAtMs < refreshMs) {
+    if (cached && cached.configSignature === configSignature) {
+      if (nowMs - cached.updatedAtMs >= refreshMs) this.queueBackgroundRefresh(item, configSignature);
       return cached.card;
     }
 
+    return this.resolveAndCache(item, nowMs, configSignature, cached);
+  }
+
+  private async resolveAndCache(item: DisplayItemConfig, nowMs: number, configSignature: string, cached: CachedCard | undefined): Promise<NormalizedDisplayCard | undefined> {
     try {
       const card = await this.resolver.resolve(item);
       if (isTransientFetchCard(card)) {
@@ -96,6 +112,20 @@ export class RotationEngine {
     } catch (error) {
       return this.fallbackCardForFetchFailure(item, cached, errorDetail(error));
     }
+  }
+
+  private queueBackgroundRefresh(item: DisplayItemConfig, configSignature: string): void {
+    if (this.backgroundRefreshIds.has(item.id)) return;
+    this.backgroundRefreshIds.add(item.id);
+    this.backgroundRefreshQueue = this.backgroundRefreshQueue
+      .catch(() => undefined)
+      .then(async () => {
+        try {
+          await this.resolveAndCache(item, this.nowMs(), configSignature, this.cache.get(item.id));
+        } finally {
+          this.backgroundRefreshIds.delete(item.id);
+        }
+      });
   }
 
   private cacheAgeMinutes(id: string, nowMs: number): number | undefined {

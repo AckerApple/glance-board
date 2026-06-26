@@ -40,8 +40,20 @@ export interface DotMatrixStatus {
   lastSentAt?: string;
 }
 
+export interface DotMatrixDisplayHardware {
+  intensity: number;
+  connect(): Promise<void>;
+  disconnect(): Promise<void>;
+  isConnected(): boolean;
+  sendMatrix(matrix: PixelMatrix, label?: string): Promise<void>;
+  sendMatrixQuick(matrix: PixelMatrix, label?: string): Promise<void>;
+  sendMatrices(matrices: PixelMatrix[], label?: string, frameDelayMs?: number | number[]): Promise<void>;
+  sendMatrixSequence(matrices: PixelMatrix[], label?: string, frameDelayMs?: number): Promise<void>;
+  confirmMatrix(matrix: PixelMatrix, label?: string, delayMs?: number): Promise<void>;
+}
+
 export class DotMatrixController {
-  private readonly display: CoolLedUxDisplay;
+  private readonly display: DotMatrixDisplayHardware;
   private status: DotMatrixConnectionStatus = "idle";
   private lastMessage: string | undefined;
   private lastSentAt: string | undefined;
@@ -58,9 +70,10 @@ export class DotMatrixController {
     private readonly options: {
       deviceName: string;
       deviceId?: string;
-    }
+    },
+    displayFactory: (options: { deviceName: string; deviceId?: string; width: number; height: number; onDisconnect: () => void }) => DotMatrixDisplayHardware = (displayOptions) => new CoolLedUxDisplay(displayOptions)
   ) {
-    this.display = new CoolLedUxDisplay({
+    this.display = displayFactory({
       deviceName: options.deviceName,
       deviceId: options.deviceId,
       width: 96,
@@ -101,12 +114,18 @@ export class DotMatrixController {
     return this.status === "connected";
   }
 
+  isConnectedOrSending(): boolean {
+    this.refreshConnectionStatus();
+    return this.status === "connected" || this.status === "sending";
+  }
+
   onUnexpectedDisconnect(listener: (status: DotMatrixStatus) => void): void {
     this.unexpectedDisconnectListeners.push(listener);
   }
 
   refreshConnectionStatus(): DotMatrixStatus {
-    if (this.status === "connected" && !this.display.isConnected()) {
+    if ((this.status === "connected" || this.status === "sending") && !this.display.isConnected()) {
+      this.connectionGeneration += 1;
       this.status = "error";
       this.lastMessage = "⚠️ Screen disconnected";
       logWithClock(this.lastMessage);

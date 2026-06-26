@@ -32,7 +32,7 @@ test("saves a resolved ZIP to weather and fuel display items", async () => {
   const saved = JSON.parse(await readFile(configPath, "utf8"));
 
   assert.equal(location.city, "Beverly Hills");
-  assert.deepEqual(saved.items[0], {
+  assert.deepEqual(saved.items.find((item: { id?: string }) => item.id === "weather"), {
     id: "weather",
     enabled: true,
     type: "weather-current",
@@ -41,7 +41,7 @@ test("saves a resolved ZIP to weather and fuel display items", async () => {
     latitude: 34.0901,
     longitude: -118.4065
   });
-  assert.deepEqual(saved.items[1], {
+  assert.deepEqual(saved.items.find((item: { id?: string }) => item.id === "fuel"), {
     id: "fuel",
     enabled: true,
     type: "fuel-average",
@@ -50,10 +50,11 @@ test("saves a resolved ZIP to weather and fuel display items", async () => {
     state: "CA",
     metro: "Beverly Hills"
   });
-  assert.deepEqual(saved.items[2], {
+  assert.deepEqual(saved.items.find((item: { id?: string }) => item.id === "date"), {
     ...initialConfig.items[2],
     categoryId: "time"
   });
+  assert.equal(saved.items.find((item: { id?: string }) => item.id === "miami-marlins-next")?.enabled, false);
 });
 
 test("rejects an invalid ZIP before making a lookup request", async () => {
