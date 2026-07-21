@@ -190,6 +190,13 @@ test("calendar provider renders ready, empty, setup, and error states", async ()
 });
 
 test("all-day calendar cards use the title line instead of ALLDAY", async () => {
+  const today = new Date();
+  const eventDate = new Date(today.getFullYear(), today.getMonth(), Math.min(today.getDate() + 1, 28));
+  const eventDateString = [
+    eventDate.getFullYear(),
+    String(eventDate.getMonth() + 1).padStart(2, "0"),
+    String(eventDate.getDate()).padStart(2, "0")
+  ].join("-");
   const provider = new ICloudCalendarProvider({
     async getUpcomingEvents() {
       return [{
@@ -197,7 +204,7 @@ test("all-day calendar cards use the title line instead of ALLDAY", async () => 
         provider: "icloud",
         calendarId: "family",
         title: "School Conference Day",
-        startTime: "2026-06-09",
+        startTime: eventDateString,
         isAllDay: true
       }];
     }
@@ -211,8 +218,42 @@ test("all-day calendar cards use the title line instead of ALLDAY", async () => 
   });
 
   assert.equal(card.calendar?.timeLabel, "");
+  assert.equal(card.matrixLines[0], "ALL DAY");
   assert.equal(card.readableLines[1].includes("ALLDAY"), false);
   assert.match(card.readableLines[1], /SCHOOL/);
+});
+
+test("all-day calendar cards show the month on matrix when event is not current month", async () => {
+  const today = new Date();
+  const eventDate = new Date(today.getFullYear(), today.getMonth() + 1, 3);
+  const eventDateString = [
+    eventDate.getFullYear(),
+    String(eventDate.getMonth() + 1).padStart(2, "0"),
+    String(eventDate.getDate()).padStart(2, "0")
+  ].join("-");
+  const expectedMonth = new Intl.DateTimeFormat(undefined, { month: "short" }).format(eventDate).toUpperCase();
+  const provider = new ICloudCalendarProvider({
+    async getUpcomingEvents() {
+      return [{
+        id: "event",
+        provider: "icloud",
+        calendarId: "family",
+        title: "Mark Hunt's Birthday",
+        startTime: eventDateString,
+        isAllDay: true
+      }];
+    }
+  });
+
+  const card = await provider.resolve({
+    id: "icloud-calendar-next-1",
+    enabled: true,
+    type: "icloud-calendar-next-event",
+    eventIndex: 0
+  });
+
+  assert.equal(card.readableLines[0], "🎂 ALL DAY");
+  assert.equal(card.matrixLines[0], expectedMonth);
 });
 
 test("calendar cards compact standalone AND in titles to ampersands", async () => {

@@ -95,7 +95,7 @@ function matrix64To96(matrix64: PixelMatrix): PixelMatrix16x96 {
 }
 
 function drawCalendarIcon(matrix: PixelMatrix, scheduledDate: string | undefined): void {
-  const date = scheduledDate ? new Date(scheduledDate) : undefined;
+  const date = parseCalendarIconDate(scheduledDate);
   const day = date && !Number.isNaN(date.getTime()) ? weekdayAbbreviation(date) : "TBD";
   const dayOfMonth = date && !Number.isNaN(date.getTime()) ? String(date.getDate()) : "--";
 
@@ -364,8 +364,7 @@ function drawMoonIcon(matrix: PixelMatrix16x96, centerX: number, centerY: number
       if (dx * dx + dy * dy > radius * radius) continue;
 
       const isLit = x >= litStart && x <= litEnd;
-      const isTopOrBottomEdge = Math.abs(dy) >= radius - 1;
-      setPixel16x96(matrix, x, y, isTopOrBottomEdge ? "white" : isLit ? "yellow" : "gray");
+      setPixel16x96(matrix, x, y, isLit ? "yellow" : "gray");
     }
   }
 }
@@ -575,7 +574,7 @@ function drawCakeIcon16x96(matrix: PixelMatrix16x96, x: number, y: number): void
 }
 
 function drawCalendarIcon16x96(matrix: PixelMatrix16x96, scheduledDate: string | undefined): void {
-  const date = scheduledDate ? new Date(scheduledDate) : undefined;
+  const date = parseCalendarIconDate(scheduledDate);
   const day = date && !Number.isNaN(date.getTime()) ? weekdayAbbreviation(date) : "TBD";
   const dayOfMonth = date && !Number.isNaN(date.getTime()) ? String(date.getDate()) : "--";
 
@@ -583,6 +582,16 @@ function drawCalendarIcon16x96(matrix: PixelMatrix16x96, scheduledDate: string |
   fillRect16x96(matrix, 0, 6, 16, 10, "white");
   drawTinyTextCutout16x96(matrix, day, 2, 1);
   drawDateCutout16x96(matrix, dayOfMonth, dayOfMonth.length === 1 ? 5 : 2, 8);
+}
+
+function parseCalendarIconDate(scheduledDate: string | undefined): Date | undefined {
+  if (!scheduledDate) return undefined;
+  const dateOnly = /^(\d{4})-(\d{2})-(\d{2})$/.exec(scheduledDate);
+  if (dateOnly) {
+    const [, year, month, day] = dateOnly;
+    return new Date(Number(year), Number(month) - 1, Number(day));
+  }
+  return new Date(scheduledDate);
 }
 
 function fillRect16x96(matrix: PixelMatrix16x96, x: number, y: number, width: number, height: number, color: PixelColor16x96): void {

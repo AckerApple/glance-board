@@ -64,6 +64,56 @@ test("renders calendar icon weekday as cutout pixels", () => {
   assert.equal(matrix[0][2], "red");
 });
 
+test("renders date-only calendar icon dates as local dates", () => {
+  const originalTz = process.env.TZ;
+  process.env.TZ = "America/New_York";
+  try {
+    const dateOnlyMatrix = renderDisplayCardToDisplayMatrix16x96(calendarCardWithStartTime("2026-11-03"));
+    const localMidnightMatrix = renderDisplayCardToDisplayMatrix16x96(calendarCardWithStartTime("2026-11-03T00:00:00"));
+
+    assert.deepEqual(
+      dateOnlyMatrix.map((row) => row.slice(0, 16)),
+      localMidnightMatrix.map((row) => row.slice(0, 16))
+    );
+  } finally {
+    if (originalTz === undefined) {
+      delete process.env.TZ;
+    } else {
+      process.env.TZ = originalTz;
+    }
+  }
+});
+
+function calendarCardWithStartTime(startTime: string): NormalizedDisplayCard {
+  return {
+    id: "icloud-calendar-next-1",
+    enabled: true,
+    type: "icloud-calendar-next-event",
+    title: "iCloud 1",
+    status: "live",
+    readableLines: ["ALL DAY", "MARK HUNT'S B"],
+    matrixLines: ["NOV", "MARK HUNT'S B"],
+    calendar: {
+      sourceType: "icloud-calendar",
+      status: "ready",
+      title: "Mark Hunt's Birthday",
+      dateLabel: "NOV3",
+      timeLabel: "",
+      shortTitle: "MARK HUNT'S B",
+      eventIndex: 0,
+      isBirthday: true,
+      event: {
+        id: "event",
+        provider: "icloud",
+        calendarId: "family",
+        title: "Mark Hunt's Birthday",
+        startTime,
+        isAllDay: true
+      }
+    }
+  };
+}
+
 test("rejects invalid matrix dimensions", () => {
   const matrix = createMatrix16x96();
   matrix[0].pop();
@@ -85,6 +135,31 @@ test("builds scroll-down transition frames between 16x96 matrices", () => {
   assert.equal(frames[0][0][0], "red");
   assert.equal(frames.at(-1)?.[0][0], "green");
   assert.equal(frames.at(-1)?.[15][95], "blue");
+});
+
+test("colors moon edge rows with the current phase", () => {
+  const card: NormalizedDisplayCard = {
+    id: "moon-phase",
+    enabled: true,
+    type: "moon-phase",
+    title: "Moon",
+    status: "live",
+    readableLines: ["MOON", "HALF"],
+    matrixLines: ["MOON", "HALF"],
+    moon: {
+      phaseName: "First Quarter",
+      illumination: 0.5,
+      waxing: true,
+      daysUntilFullMoon: 7
+    }
+  };
+
+  const matrix = renderDisplayCardToDisplayMatrix16x96(card);
+  const edgePixels = [...matrix[2].slice(5, 12), ...matrix[14].slice(5, 12)];
+
+  assert.ok(edgePixels.includes("yellow"));
+  assert.ok(edgePixels.includes("gray"));
+  assert.ok(!edgePixels.includes("white"));
 });
 
 test("renders regular fuel red and diesel fuel green", () => {

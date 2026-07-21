@@ -19,10 +19,11 @@ export async function resolveCalendarDisplay(
     const timeLabel = formatTimeLabel(event);
     const shortTitle = shortEventTitle(event.title, 13);
     const timeLine = event.isAllDay ? "ALL DAY" : timeLabel;
+    const matrixTimeLine = event.isAllDay ? formatAllDayMatrixLine(event) : timeLabel;
     const isBirthday = isBirthdayEvent(event.title);
     const readableLines = [`${isBirthday ? "🎂 " : ""}${timeLine}`, shortTitle];
     const matrixLines = [
-      sanitizeDisplayText(timeLine),
+      sanitizeDisplayText(matrixTimeLine),
       sanitizeCalendarTitle(shortTitle)
     ];
     return {
@@ -139,6 +140,13 @@ function formatTimeLabel(event: NormalizedCalendarEvent): string {
   const minute = parts.find((part) => part.type === "minute")?.value ?? "";
   const dayPeriod = parts.find((part) => part.type === "dayPeriod")?.value?.[0] ?? "";
   return `${hour}:${minute}${dayPeriod}`.toUpperCase();
+}
+
+function formatAllDayMatrixLine(event: NormalizedCalendarEvent): string {
+  const start = eventDate(event);
+  const today = new Date();
+  if (start.getFullYear() === today.getFullYear() && start.getMonth() === today.getMonth()) return "ALL DAY";
+  return new Intl.DateTimeFormat(undefined, { month: "short" }).format(start).toUpperCase();
 }
 
 function shortEventTitle(title: string, length = 6): string {
