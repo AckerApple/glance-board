@@ -1,3 +1,4 @@
+import { calendarFailure } from "./calendar-error.js";
 import { fitDisplayLine, sanitizeDisplayText } from "../matrix/text-sanitizer.js";
 import { CalendarDisplayData, CalendarSourceType, DisplayItemConfig, NormalizedCalendarEvent } from "../rotation/types.js";
 
@@ -52,9 +53,10 @@ export async function resolveCalendarDisplay(
       }
     };
   } catch (error) {
-    const message = error instanceof Error ? error.message : String(error);
+    const failure = calendarFailure(error);
+    const message = failure.detail;
     if (isNotConfiguredError(error)) return notConfiguredCalendarCard(sourceType, eventIndex, message);
-    return errorCalendarCard(sourceType, eventIndex, message);
+    return errorCalendarCard(sourceType, eventIndex, message, failure.lines);
   }
 }
 
@@ -98,7 +100,7 @@ function notConfiguredCalendarCard(sourceType: CalendarSourceType, eventIndex: n
   };
 }
 
-function errorCalendarCard(sourceType: CalendarSourceType, eventIndex: number, error: string) {
+function errorCalendarCard(sourceType: CalendarSourceType, eventIndex: number, error: string, lines: string[]) {
   return {
     calendar: {
       sourceType,
@@ -110,8 +112,8 @@ function errorCalendarCard(sourceType: CalendarSourceType, eventIndex: number, e
       eventIndex,
       error
     },
-    readableLines: ["CAL ERROR", "OPEN APP"],
-    matrixLines: ["CAL ERROR", "OPEN APP"],
+    readableLines: lines,
+    matrixLines: lines,
     debug: { eventIndex, error }
   };
 }
@@ -177,7 +179,7 @@ function startOfDay(date: Date): Date {
 }
 
 function isNotConfiguredError(error: unknown): boolean {
-  return error instanceof Error && "isNotConfigured" in error;
+  return error instanceof Error && "isNotConfigured" in error && error.isNotConfigured === true;
 }
 
 export function calendarStatusToGameStatus(status: CalendarDisplayData["status"] | undefined) {

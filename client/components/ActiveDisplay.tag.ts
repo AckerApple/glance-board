@@ -27,7 +27,7 @@ export const ActiveDisplay = tag(() => {
           div.class`panel-header`(
             h2('👀 ', () => card?.title || "Active Item"),
             div.class`panel-actions`(
-              span(state?.paused ? "Paused" : card?.status ?? "Matrix"),
+              span(() => state?.paused ? "Paused" : card?.status ?? "Matrix"),
               button
                 .type("button")
                 .onClick(actions.toggleRotationPause)(
@@ -35,8 +35,8 @@ export const ActiveDisplay = tag(() => {
                 )
             )
           ),
-          pre.class`readable`((card?.readableLines ?? []).join("\n") || "No output"),
-          p.class`game-details`(card ? formatGameDetails(card) : "Loading..."),
+          pre.class`readable`(() => (card?.readableLines ?? []).join("\n") || "No output"),
+          p.class`game-details`(() => card ? formatGameDetails(card) : "Loading..."),
           () => card ? screenDataPanel(card) : null
         )
       )
@@ -61,7 +61,7 @@ const screenDataPanel = tag((card: DisplayCard) => {
         return summaryItems.map(([label, value]) =>
         div.class`screen-data-chip`(
           strong(label),
-          span(value)
+          span(() => value)
         ).key(label)
       )}
     ),

@@ -30,7 +30,8 @@ export function scheduleMatrixDraw(id: string, matrix: PixelMatrix, intensity: n
 }
 
 export function scheduleMatrixTransitionDraw(id: string, targetKey: string | undefined, matrix: PixelMatrix, intensity: number): void {
-  const key = targetKey ?? "fallback";
+  // A calendar can change from an error to an event without changing its ID.
+  const key = `${targetKey ?? "fallback"}:${JSON.stringify(matrix)}`;
   const state = animations.get(id) ?? {};
   animations.set(id, state);
 

@@ -1,3 +1,4 @@
+import { calendarFailure } from "../providers/calendar-error.js";
 import { SportsProvider } from "../providers/sports-provider.js";
 import { WeatherProvider } from "../providers/weather-provider.js";
 import { MoonProvider } from "../providers/moon-provider.js";
@@ -67,11 +68,16 @@ export class DisplayItemResolver {
         internet: hasInternet(resolved) ? resolved.internet : undefined,
         dateTime: hasDateTime(resolved) ? resolved.dateTime : undefined,
         calendar,
+        error: calendar?.error,
         debug: resolved.debug,
         raw: hasRaw(resolved) ? resolved.raw : undefined
       };
     } catch (error) {
       const title = titleForConfig(config);
+      if (config.type === "google-calendar-next-event" || config.type === "icloud-calendar-next-event") {
+        const failure = calendarFailure(error);
+        return { ...config, title, status: "error", error: failure.detail, readableLines: failure.lines, matrixLines: failure.lines };
+      }
       return {
         id: config.id,
         enabled: config.enabled,

@@ -99,3 +99,11 @@ export class JsonLog {
     });
   }
 }
+
+export function formatErrorLabel(label: string, color = Boolean(process.stderr.isTTY) && !process.env.NO_COLOR && process.env.TERM !== "dumb"): string {
+  return color ? `\u001b[31m${label}\u001b[0m` : label;
+}
+
+export function logCalendarError(source: string, detail: string): void {
+  console.error(withClockStamp(`❌ ${source}: ${formatErrorLabel("Calendar error")} — ${detail}`));
+}

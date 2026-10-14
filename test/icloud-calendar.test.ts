@@ -186,7 +186,7 @@ test("calendar provider renders ready, empty, setup, and error states", async ()
   assert.equal(readyCard.readableLines[0].includes("CAL"), false);
   assert.deepEqual((await emptyProvider.resolve(config)).readableLines, ["CAL EMPTY", "NO EVENTS"]);
   assert.deepEqual((await setupProvider.resolve(config)).readableLines, ["CAL SETUP", "OPEN APP"]);
-  assert.deepEqual((await errorProvider.resolve(config)).readableLines, ["CAL ERROR", "OPEN APP"]);
+  assert.deepEqual((await errorProvider.resolve(config)).readableLines, ["NETWORK ERROR", "WILL RETRY"]);
 });
 
 test("all-day calendar cards use the title line instead of ALLDAY", async () => {

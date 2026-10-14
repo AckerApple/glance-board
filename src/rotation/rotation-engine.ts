@@ -1,3 +1,5 @@
+import { calendarFailure } from "../providers/calendar-error.js";
+import { logCalendarError, logWithClock } from "../hardware/logging.js";
 import { DisplayItemResolver } from "./display-item-resolver.js";
 import { loadDisplayItemsConfig } from "./display-config.js";
 import { DisplayItemConfig, NormalizedDisplayCard, RotationDisplayState } from "./types.js";
@@ -13,6 +15,7 @@ interface CachedCard {
 
 export class RotationEngine {
   private activeIndex = 0;
+  private readonly calendarReports = new Map<string, { detail: string; at: number }>();
   private latestCards: NormalizedDisplayCard[] = [];
   private readonly cache = new Map<string, CachedCard>();
   private readonly backgroundRefreshIds = new Set<string>();
@@ -41,7 +44,7 @@ export class RotationEngine {
       items: config.items.map((item) => ({
         ...item,
         resolved: cards.some((card) => card.id === item.id),
-        error: cards.find((card) => card.id === item.id)?.error,
+        error: this.cache.get(item.id)?.card.error,
         lastUpdated: item.enabled && this.cache.get(item.id)?.updatedAtMs ? new Date(this.cache.get(item.id)!.updatedAtMs).toISOString() : undefined,
         lastUpdatedAgeMinutes: item.enabled ? this.cacheAgeMinutes(item.id, nowMs) : undefined,
         refreshIntervalSeconds: item.enabled ? refreshIntervalSecondsForItem(item) : undefined
@@ -94,7 +97,7 @@ export class RotationEngine {
     const refreshMs = refreshIntervalSecondsForItem(item) * 1000;
     if (cached && cached.configSignature === configSignature) {
       if (nowMs - cached.updatedAtMs >= refreshMs) this.queueBackgroundRefresh(item, configSignature);
-      return cached.card;
+      return hiddenCalendarCard(cached.card) ? undefined : cached.card;
     }
 
     return this.resolveAndCache(item, nowMs, configSignature, cached);
@@ -103,6 +106,15 @@ export class RotationEngine {
   private async resolveAndCache(item: DisplayItemConfig, nowMs: number, configSignature: string, cached: CachedCard | undefined): Promise<NormalizedDisplayCard | undefined> {
     try {
       const card = await this.resolver.resolve(item);
+      if (isCalendar(item)) {
+        if (card.status === "error" || card.status === "not_configured") {
+          this.reportCalendar(item, card.error ?? card.calendar?.error ?? "Calendar request failed; retrying automatically", nowMs);
+        } else if (this.calendarReports.delete(item.id)) {
+          logWithClock(`✅ ${item.type} slot ${Number(item.eventIndex) || 0}: Calendar recovered`);
+        }
+        this.cache.set(item.id, { card, item, configSignature, updatedAtMs: nowMs });
+        return hiddenCalendarCard(card) ? undefined : card;
+      }
       if (isTransientFetchCard(card)) {
         return this.fallbackCardForFetchFailure(item, cached, card.error);
       }
@@ -110,8 +122,23 @@ export class RotationEngine {
       this.cache.set(item.id, { card, item, configSignature, updatedAtMs: nowMs });
       return card;
     } catch (error) {
+      if (isCalendar(item)) {
+        const failure = calendarFailure(error);
+        const card: NormalizedDisplayCard = { ...item, title: "Calendar", status: "error", error: failure.detail, readableLines: failure.lines, matrixLines: failure.lines };
+        this.reportCalendar(item, failure.detail, nowMs);
+        this.cache.set(item.id, { card, item, configSignature, updatedAtMs: nowMs });
+        return hiddenCalendarCard(card) ? undefined : card;
+      }
       return this.fallbackCardForFetchFailure(item, cached, errorDetail(error));
     }
+  }
+
+  private reportCalendar(item: DisplayItemConfig, detail: string, nowMs: number): void {
+    const previous = this.calendarReports.get(item.id);
+    if (previous?.detail === detail && nowMs - previous.at < 15 * 60_000) return;
+    // Use the provider and slot, never user-supplied IDs or calendar URLs.
+    logCalendarError(`${item.type} slot ${Number(item.eventIndex) || 0}`, detail);
+    this.calendarReports.set(item.id, { detail, at: nowMs });
   }
 
   private queueBackgroundRefresh(item: DisplayItemConfig, configSignature: string): void {
@@ -174,4 +201,12 @@ function errorDetail(error: unknown): string {
   if (!(error instanceof Error)) return String(error);
   const cause = error.cause instanceof Error ? `; cause=${error.cause.message}` : "";
   return `${error.message}${cause}`;
+}
+
+function isCalendar(item: DisplayItemConfig): boolean {
+  return item.type === "google-calendar-next-event" || item.type === "icloud-calendar-next-event";
+}
+
+function hiddenCalendarCard(card: NormalizedDisplayCard): boolean {
+  return isCalendar(card) && card.status === "error" && card.readableLines.length === 0;
 }

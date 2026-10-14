@@ -1,3 +1,4 @@
+import { CalendarRequestError } from "./calendar-error.js";
 import { randomBytes } from "node:crypto";
 import { loadDisplayItemsConfig, saveDisplayItemsConfig } from "../rotation/display-config.js";
 import { readJsonFile, removeJsonFile, writeJsonFile, loadLocalEnv } from "../server/local-config.js";
@@ -196,8 +197,10 @@ export class GoogleCalendarService {
         grant_type: "refresh_token"
       })
     });
-    const refreshed = (await response.json()) as GoogleToken & { error?: string; error_description?: string };
-    if (!response.ok) throw new Error(refreshed.error_description ?? refreshed.error ?? `Google token refresh failed: HTTP ${response.status}`);
+    const refreshed = (await response.json().catch(() => {
+      throw new CalendarRequestError(response.status);
+    })) as GoogleToken & { error?: string };
+    if (!response.ok) throw new CalendarRequestError(response.status, refreshed.error);
     const nextToken = { ...token, ...withExpiry(refreshed), refresh_token: token.refresh_token };
     await this.saveToken(nextToken);
     return nextToken.access_token!;
@@ -211,11 +214,8 @@ export class GoogleCalendarService {
         accept: "application/json"
       }
     });
+    if (!response.ok) throw new CalendarRequestError(response.status);
     const payload = await response.json();
-    if (!response.ok) {
-      const message = typeof payload?.error?.message === "string" ? payload.error.message : `Google Calendar API returned HTTP ${response.status}`;
-      throw new Error(message);
-    }
     return payload as T;
   }
 }
