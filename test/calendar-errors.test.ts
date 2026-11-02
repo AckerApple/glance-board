@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { resolveCalendarDisplay } from "../src/providers/calendar-display-provider.js";
-import { CalendarRequestError, calendarFailure } from "../src/providers/calendar-error.js";
+import { CalendarRequestError, calendarFailure, googleCalendarRequestError } from "../src/providers/calendar-error.js";
 import { formatErrorLabel } from "../src/hardware/logging.js";
 import { RotationEngine } from "../src/rotation/rotation-engine.js";
 import { DisplayItemConfig, NormalizedDisplayCard } from "../src/rotation/types.js";
@@ -111,4 +111,21 @@ test("Google API keeps HTTP auth status without exposing non-JSON response bodie
       return true;
     });
   } finally { globalThis.fetch = original; }
+});
+
+
+test("Google error reason handling distinguishes API enablement from consent without leaking response contents", () => {
+  const error = googleCalendarRequestError(403, { error: {
+    message: 'PRIVATE EVENT SECRET',
+    errors: [{ reason: 'accessNotConfigured' }],
+    details: [{ reason: 'SERVICE_DISABLED', metadata: { consumer: 'projects/12345' } }]
+  } });
+  assert.equal(error.code, 'api_disabled');
+  assert.equal(error.setupUrl, 'https://console.cloud.google.com/apis/library/calendar-json.googleapis.com?project=12345');
+  assert.match(calendarFailure(error).detail, /API is disabled/);
+  assert.doesNotMatch(JSON.stringify(error), /PRIVATE|SECRET/);
+  const scope = googleCalendarRequestError(403, { error: { details: [{ reason: 'ACCESS_TOKEN_SCOPE_INSUFFICIENT' }] } });
+  assert.equal(scope.code, 'insufficient_scope');
+  assert.match(calendarFailure(scope).detail, /Reconnect/);
+  assert.doesNotThrow(() => googleCalendarRequestError(403, { error: { details: [{ reason: 'SERVICE_DISABLED', metadata: { consumer: 123 } }] } }));
 });

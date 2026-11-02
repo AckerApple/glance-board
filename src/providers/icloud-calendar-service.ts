@@ -1,3 +1,5 @@
+import { calendarSelection, combineCalendarEvents } from "./calendar-selection.js";
+import { normalizeCalendarColor } from "../matrix/color.js";
 import { CalDAVClient, Calendar, Event, RecurrenceRule } from "ts-caldav";
 import { loadDisplayItemsConfig, saveDisplayItemsConfig } from "../rotation/display-config.js";
 import { DisplayItemConfig, DisplayItemsConfig, NormalizedCalendarEvent } from "../rotation/types.js";
@@ -17,6 +19,7 @@ interface ICloudCalendarCredentials {
 interface ICloudCalendarSettings {
   provider?: "icloud";
   calendarId?: string;
+  calendarIds?: string[];
   calendarName?: string;
   eventShowCount?: number;
 }
@@ -77,6 +80,7 @@ export class ICloudCalendarService {
       connected: Boolean(credentials.appleId && credentials.appSpecificPassword),
       appleId: credentials.appleId,
       selectedCalendarId: settings.calendarId,
+      selectedCalendarIds: calendarSelection(settings.calendarIds ?? settings.calendarId),
       selectedCalendarName: settings.calendarName,
       eventShowCount: normalizeEventShowCount(settings.eventShowCount),
       provider: "icloud" as const
@@ -114,54 +118,71 @@ export class ICloudCalendarService {
     }
   }
 
-  async saveSelectedCalendar(calendarId: string, calendarName?: string, eventShowCount?: number): Promise<ICloudCalendarSettings> {
-    if (!calendarId.trim()) throw new Error("calendarId is required");
+  async saveSelectedCalendar(selection: string | string[], calendarName?: string, eventShowCount?: number): Promise<ICloudCalendarSettings> {
+    const ids = calendarSelection(selection);
+    if (!Array.isArray(selection) && !ids.length) throw new Error("calendarId is required");
+    const calendarId = ids[0];
     const current = await this.getSettings();
     const settings: ICloudCalendarSettings = {
       provider: "icloud",
-      calendarId: calendarId.trim(),
+      calendarId,
+      ...(Array.isArray(selection) ? { calendarIds: ids } : {}),
       calendarName: calendarName?.trim() || undefined,
       eventShowCount: normalizeEventShowCount(eventShowCount ?? current.eventShowCount)
     };
     await this.storage.write(SETTINGS_FILE, settings);
-    this.eventCache.clear();
+    const config = await this.storage.loadDisplayConfig();
+    await this.storage.saveDisplayConfig({ ...config, items: config.items.map(item => item.type === "icloud-calendar-next-event" ? { ...item, calendarId: Array.isArray(selection) ? undefined : calendarId } : item) });
+    this.clearCache();
     return settings;
   }
 
   async getUpcomingEvents(calendarId: string | undefined, limit = 3): Promise<NormalizedCalendarEvent[]> {
     const settings = await this.getSettings();
-    const selectedCalendarId = calendarId ?? settings.calendarId;
-    if (!selectedCalendarId) throw new ICloudNotConfiguredError("No iCloud Calendar selected");
+    const ids = calendarSelection(calendarId ?? settings.calendarIds ?? settings.calendarId);
+    if (!ids.length) throw new ICloudNotConfiguredError("No iCloud Calendar selected");
+    const client = await this.getClient();
+    let calendars: Promise<Calendar[]> | undefined;
+    const loadCalendars = () => calendars ??= client.getCalendars().catch(() => []);
+    return combineCalendarEvents(await Promise.all(ids.map(id => this.getCalendarEvents(id, limit, client, loadCalendars, id === settings.calendarId ? settings.calendarName : undefined))), limit);
+  }
 
+  private async getCalendarEvents(selectedCalendarId: string, limit: number, client: CalDavClientLike, loadCalendars: () => Promise<Calendar[]>, calendarName?: string): Promise<NormalizedCalendarEvent[]> {
     const cached = this.eventCache.get(selectedCalendarId);
     if (cached && cached.expiresAt > Date.now() && cached.events.length >= limit) {
-      return cached.events.slice(0, limit);
+      return combineCalendarEvents([cached.events], limit);
     }
 
     const start = this.now();
     const end = new Date(start.getTime() + FETCH_WINDOW_MS);
-    const client = await this.getClient();
+    const calendar = await loadCalendars()
+      .then(calendars => calendars.find(calendar => calendar.url === selectedCalendarId))
+      .catch(() => undefined);
     const rawEvents = await client.getEvents(selectedCalendarId, { start, end, all: false });
     const events = rawEvents
       .filter((event) => event.status !== "CANCELLED")
-      .flatMap((event) => normalizeICloudOccurrences(event, selectedCalendarId, settings.calendarName, start, end))
+      .flatMap((event) => normalizeICloudOccurrences(event, selectedCalendarId, calendar?.displayName ?? calendarName, start, end))
       .filter((event) => eventStart(event) >= start.getTime())
       .sort((left, right) => eventStart(left) - eventStart(right));
+    for (const event of events) event.calendarColor = normalizeCalendarColor(calendar?.color);
     this.eventCache.set(selectedCalendarId, { expiresAt: Date.now() + CACHE_MS, events });
-    return events.slice(0, limit);
+    return combineCalendarEvents([events], limit);
   }
 
   async installRotationItems(calendarId?: string, eventShowCount?: number): Promise<void> {
     const settings = await this.getSettings();
-    const selectedCalendarId = calendarId ?? settings.calendarId;
-    if (!selectedCalendarId) throw new ICloudNotConfiguredError("No iCloud Calendar selected");
+    const ids = calendarSelection(calendarId ?? settings.calendarIds ?? settings.calendarId);
+    if (!ids.length) throw new ICloudNotConfiguredError("No iCloud Calendar selected");
+    const selectedCalendarId = calendarId ?? (settings.calendarIds ? undefined : settings.calendarId);
     const count = normalizeEventShowCount(eventShowCount ?? settings.eventShowCount);
-    await this.storage.write(SETTINGS_FILE, {
+    const nextSettings: ICloudCalendarSettings = {
       ...settings,
       provider: "icloud",
-      calendarId: selectedCalendarId,
+      calendarId: ids[0],
       eventShowCount: count
-    });
+    };
+    if (calendarId !== undefined) delete nextSettings.calendarIds;
+    await this.storage.write(SETTINGS_FILE, nextSettings);
     const config = await this.storage.loadDisplayConfig();
     const nextItems: DisplayItemConfig[] = Array.from({ length: count }, (_, eventIndex) => ({
       id: `icloud-calendar-next-${eventIndex + 1}`,

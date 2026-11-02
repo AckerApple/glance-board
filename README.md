@@ -12,7 +12,7 @@ cp config/display-items.example.json config/display-items.json
 npm run dev
 ```
 
-Open `http://localhost:3010`.
+Open `http://localhost:3010`. Use **🏠 Home** for the rotating display and device controls, and **🗓️ Calendars** for Google and iCloud setup, calendar selection, event previews, and installing calendar rotation items. The Calendars page can be bookmarked at `http://localhost:3010/#/calendars`; refresh and browser Back/Forward preserve the selected page.
 
 ## Commands
 
@@ -49,7 +49,9 @@ The active configuration is local and ignored by Git. Commit changes to `config/
 
 ## Google Calendar
 
-Create a Google OAuth Web application client, enable the Google Calendar API, and authorize:
+The normal Calendars flow is **Connect Google Calendar → approve read-only access on Google → choose a calendar → Show on Glance Board**. Calendar selection saves and previews automatically. **Hide from Glance Board** disables Google display items while keeping the account connected; it leaves iCloud and other displays alone. Application credentials belong to the board owner and are kept under the collapsed **Board owner settings** section, never a regular-user setup wizard. If the owner has not configured them, users see a clear unavailable message instead of being sent to Google Cloud. Google sign-in generates the access and refresh tokens automatically; do not paste tokens into the app. Tokens remain on the server and refresh automatically while Google permits access.
+
+Create a Cloud project, enable the [Google Calendar API](https://console.cloud.google.com/apis/library/calendar-json.googleapis.com), configure [Google Auth Platform](https://console.cloud.google.com/auth/overview) (including your email as a test user for a personal external Testing app), then create a **Web application** [OAuth client](https://console.cloud.google.com/auth/clients). Authorize the exact redirect URI shown in Board owner settings, normally:
 
 ```text
 http://localhost:3010/api/google-calendar/auth/callback
@@ -70,7 +72,11 @@ GOOGLE_CALENDAR_CLIENT_SECRET=your-client-secret
 GOOGLE_CALENDAR_REDIRECT_URI=http://localhost:3010/api/google-calendar/auth/callback
 ```
 
-Google installs `google-calendar-next-1` through `google-calendar-next-3`.
+Select one or more calendars (Ctrl/Command-click to select multiple); selection changes save automatically. **Show on Glance Board** installs `google-calendar-next-1` through `google-calendar-next-3`. Changing the selection updates the preview and any installed Google items without changing whether they are enabled. Events from selected calendars are merged chronologically and retain each source calendar’s color. **Clear selection** removes all calendars; calendar cards return to the setup state until calendars are selected again. Existing single-calendar settings continue to work.
+
+After consent, Google returns you directly to Calendars. Cancelling or an expired sign-in shows a safe explanation with a link back. Sign-in attempts expire after ten minutes and are invalidated by Disconnect. Disconnect clears local tokens; to revoke the permission at Google too, use [Google account connections](https://myaccount.google.com/connections). External OAuth apps in Testing can require reconnection after seven days; see [Google’s token-expiration guidance](https://developers.google.com/identity/protocols/oauth2#expiration).
+
+For a `redirect_uri_mismatch`, make the Google client’s Authorized redirect URI match Board owner settings exactly. A localhost callback must be opened on the computer running this server. If Calendar access is blocked, check the API, test-user list, and any Workspace administrator policy.
 
 ## iCloud Calendar
 
@@ -81,7 +87,7 @@ In the browser:
 1. Open the **iCloud Calendar** panel.
 2. Enter your Apple ID email and app-specific password.
 3. Click **Connect** to discover available calendars.
-4. Select a calendar and click **Save Calendar**.
+4. Select one or more calendars (Ctrl/Command-click for multiple) and click **Save Calendars**. The preview and installed cards use one chronological list, retaining each source calendar’s color. Use **Clear selection** to remove all calendars.
 5. Review the next three events, then click **Install Rotation Items**.
 
 iCloud installs `icloud-calendar-next-1` through `icloud-calendar-next-3`, so Google and iCloud cards can rotate together. Credentials and selected-calendar settings remain server-side in ignored files:

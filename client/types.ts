@@ -1,4 +1,4 @@
-export type PixelColor = "off" | "green" | "blue" | "white" | "orange" | "red" | "yellow" | "purple" | "gray";
+export type PixelColor = `#${string}` | "off" | "green" | "blue" | "white" | "orange" | "red" | "yellow" | "purple" | "gray";
 export type PixelMatrix = PixelColor[][];
 
 export interface DisplayItem {
@@ -115,12 +115,15 @@ export interface LocationData {
 }
 
 export interface CalendarStatus {
+  accountEmail?: string;
+  displayEnabled?: boolean;
   authenticated?: boolean;
   credentialsConfigured?: boolean;
   credentialsSource?: string;
   missingCredentials?: string[];
   redirectUri?: string;
   selectedCalendarId?: string;
+  selectedCalendarIds?: string[];
   selectedCalendarName?: string;
 }
 
@@ -131,6 +134,10 @@ export interface CalendarOption {
 }
 
 export interface CalendarEvent {
+  id?: string;
+  calendarId?: string;
+  calendarName?: string;
+  calendarColor?: string;
   title?: string;
   startTime?: string;
   isAllDay?: boolean;
@@ -141,6 +148,7 @@ export interface ICloudCalendarStatus {
   connected?: boolean;
   appleId?: string;
   selectedCalendarId?: string;
+  selectedCalendarIds?: string[];
   selectedCalendarName?: string;
   eventShowCount?: number;
   provider?: "icloud";

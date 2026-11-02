@@ -1,3 +1,4 @@
+import { normalizeCalendarColor } from "./color.js";
 import { createEmptyMatrix, drawText, PixelColor, PixelMatrix, setPixel } from "./compact64.js";
 import {
   createMatrix16x96,
@@ -324,14 +325,15 @@ function renderDateTimeCardToMatrix16x96(card: NormalizedDisplayCard): PixelMatr
   const matrix = createMatrix16x96();
   const [line1 = "", line2 = ""] = card.matrixLines;
 
-  drawCalendarIcon16x96(matrix, card.dateTime?.scheduledDate ?? card.calendar?.event?.startTime);
-  drawText16x96(matrix, fitDisplayLine(line1, 13), 18, 0, "orange");
+  const calendarColor = card.calendar?.status === "ready" ? normalizeCalendarColor(card.calendar.event?.calendarColor) : undefined;
+  drawCalendarIcon16x96(matrix, card.dateTime?.scheduledDate ?? card.calendar?.event?.startTime, calendarColor);
+  drawText16x96(matrix, fitDisplayLine(line1, 13), 18, 0, calendarColor ?? "orange");
   drawText16x96(
     matrix,
     fitDisplayLine(line2, 13, { preserveAmpersand: Boolean(card.calendar) }),
     18,
     8,
-    "white",
+    calendarColor ?? "white",
     { preserveAmpersand: Boolean(card.calendar) }
   );
   if (card.calendar?.isBirthday) drawCakeIcon16x96(matrix, 87, 0);
@@ -573,12 +575,12 @@ function drawCakeIcon16x96(matrix: PixelMatrix16x96, x: number, y: number): void
   }
 }
 
-function drawCalendarIcon16x96(matrix: PixelMatrix16x96, scheduledDate: string | undefined): void {
+function drawCalendarIcon16x96(matrix: PixelMatrix16x96, scheduledDate: string | undefined, color: PixelColor16x96 = "red"): void {
   const date = parseCalendarIconDate(scheduledDate);
   const day = date && !Number.isNaN(date.getTime()) ? weekdayAbbreviation(date) : "TBD";
   const dayOfMonth = date && !Number.isNaN(date.getTime()) ? String(date.getDate()) : "--";
 
-  fillRect16x96(matrix, 0, 0, 16, 6, "red");
+  fillRect16x96(matrix, 0, 0, 16, 6, color);
   fillRect16x96(matrix, 0, 6, 16, 10, "white");
   drawTinyTextCutout16x96(matrix, day, 2, 1);
   drawDateCutout16x96(matrix, dayOfMonth, dayOfMonth.length === 1 ? 5 : 2, 8);

@@ -96,6 +96,7 @@ test("returns sorted upcoming events, ignores cancellations, and preserves all-d
   assert.equal(events[0].isAllDay, true);
   assert.equal(events[0].startTime, "2026-06-09");
   assert.equal(events[0].provider, "icloud");
+  assert.ok(events.every(event => event.calendarColor === "#ff0000"));
 });
 
 test("expands common weekly recurring events into the fetch window", () => {

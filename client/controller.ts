@@ -1,4 +1,4 @@
-import { getJson, postJson } from "./api.js";
+import { ApiError, getJson, postJson } from "./api.js";
 import { availableCards } from "./display-utils.js";
 import {
   calendar$,
@@ -54,8 +54,10 @@ export const actions = {
   saveCalendarCredentials,
   signInCalendar: () => { window.location.href = "/api/google-calendar/auth/start"; },
   disconnectCalendar,
+  cancelCalendarRequest,
   selectCalendar,
   installCalendarItems,
+  hideGoogleCalendarItems,
   refreshICloudCalendar,
   connectICloudCalendar,
   disconnectICloudCalendar,
@@ -93,8 +95,8 @@ async function pollRotation(): Promise<void> {
   }
 }
 
-async function refreshRotation(refreshCalendar = false): Promise<void> {
-  const payload = await getJson<RotationPayload>(refreshCalendar ? "/api/rotation?refresh=calendar" : "/api/rotation");
+async function refreshRotation(refreshCalendar = false, signal?: AbortSignal): Promise<void> {
+  const payload = await getJson<RotationPayload>(refreshCalendar ? "/api/rotation?refresh=calendar" : "/api/rotation", signal);
   applyRotation(payload);
 }
 
@@ -334,53 +336,109 @@ async function detectLocation(): Promise<void> {
   }
 }
 
-async function refreshCalendar(): Promise<void> {
-  updateCalendar({ busy: true });
-  try {
-    const status = await getJson<CalendarStatus>("/api/google-calendar/status");
-    const message = calendarStatusMessage(status);
-    if (!status.authenticated) {
-      updateCalendar({ status, calendars: [], events: [], message });
-      return;
-    }
+let calendarRequest: AbortController | undefined;
 
-    const [{ calendars }, { events }] = await Promise.all([
-      getJson<{ calendars: CalendarOption[] }>("/api/google-calendar/calendars"),
-      getJson<{ events: CalendarEvent[] }>(calendarEventsUrl(status.selectedCalendarId))
-    ]);
-    updateCalendar({ status, calendars, events, message });
+function cancelCalendarRequest(): void {
+  calendarRequest?.abort();
+  calendarRequest = undefined;
+  updateCalendar({ busy: false, disconnecting: false, discoveryState: "idle", message: "Calendar request cancelled. Refresh to try again, or Disconnect to clear sign-in." });
+}
+
+async function runCalendarRequest(work: (request: AbortController) => Promise<void>, disconnecting = false): Promise<void> {
+  calendarRequest?.abort();
+  const request = new AbortController();
+  calendarRequest = request;
+  updateCalendar({ busy: true, disconnecting });
+  try {
+    await work(request);
   } catch (error) {
-    updateCalendar({ message: `Calendar setup unavailable: ${errorMessage(error)}` });
+    if (calendarRequest === request) updateCalendar({ message: `Calendar request failed: ${errorMessage(error)}` });
   } finally {
-    updateCalendar({ busy: false });
+    request.abort();
+    if (calendarRequest === request) {
+      calendarRequest = undefined;
+      updateCalendar({ busy: false, disconnecting: false });
+    }
   }
+}
+
+async function loadCalendar(request: AbortController): Promise<void> {
+  const status = await getJson<CalendarStatus>("/api/google-calendar/status", request.signal);
+  if (calendarRequest !== request) return;
+  const message = calendarStatusMessage(status);
+  // Publish auth before slower provider calls, so users can always disconnect.
+  updateCalendar({ status, calendars: [], events: [], message, discoveryState: status.authenticated ? "loading" : "idle", discoveryError: undefined, setupUrl: undefined });
+  if (!status.authenticated) return;
+  let calendars: CalendarOption[];
+  try {
+    ({ calendars } = await getJson<{ calendars: CalendarOption[] }>("/api/google-calendar/calendars", request.signal));
+  } catch (error) {
+    if (calendarRequest === request) {
+      let setupUrl: string | undefined;
+      if (error instanceof ApiError && error.code === "api_disabled" && error.setupUrl) {
+        try {
+          const link = new URL(error.setupUrl);
+          if (link.origin === "https://console.cloud.google.com" && link.pathname === "/apis/library/calendar-json.googleapis.com") setupUrl = link.href;
+        } catch { /* Ignore untrusted links. */ }
+      }
+      updateCalendar({ discoveryState: "error", discoveryError: errorMessage(error), setupUrl });
+    }
+    throw error;
+  }
+  if (calendarRequest !== request) return;
+  updateCalendar({ calendars, discoveryState: "ready", message: calendars.length ? status.selectedCalendarId ? message : "Connected to Google. Choose a calendar below, then preview it or add it to your display." : "Google returned no available calendars. Check the connected account or reconnect with another account." });
+  if (!status.selectedCalendarId) return;
+  const { events } = await getJson<{ events: CalendarEvent[] }>(calendarEventsUrl(), request.signal);
+  if (calendarRequest === request) updateCalendar({ events, message });
+}
+
+async function refreshCalendar(): Promise<void> {
+  await runCalendarRequest(loadCalendar);
 }
 
 async function saveCalendarCredentials(values: { clientId: string; clientSecret: string; redirectUri: string }): Promise<void> {
-  updateCalendar({ busy: true });
-  try {
-    const status = await postJson<CalendarStatus>("/api/google-calendar/credentials", values);
-    updateCalendar({ status, message: "Calendar credentials saved locally. Click Sign In to connect Google Calendar." });
-  } catch (error) {
-    updateCalendar({ message: `Calendar credentials save failed: ${errorMessage(error)}` });
-  } finally {
-    updateCalendar({ busy: false });
-  }
+  await runCalendarRequest(async request => {
+    const status = await postJson<CalendarStatus>("/api/google-calendar/credentials", values, request.signal);
+    if (calendarRequest === request) updateCalendar({ status, message: "Google connection setup saved. You can now choose Connect Google Calendar." });
+  });
 }
 
 async function disconnectCalendar(): Promise<void> {
-  await postJson("/api/google-calendar/auth/logout");
-  await refreshCalendar();
+  await runCalendarRequest(async request => {
+    const status = await postJson<CalendarStatus>("/api/google-calendar/auth/logout", undefined, request.signal);
+    if (calendarRequest === request) updateCalendar({ status, calendars: [], events: [], discoveryState: "idle", discoveryError: undefined, setupUrl: undefined, message: "Google Calendar disconnected." });
+  }, true);
 }
 
-async function selectCalendar(calendarId: string, calendarName: string): Promise<void> {
-  await postJson("/api/google-calendar/selected-calendar", { calendarId, calendarName });
-  await refreshCalendar();
+async function selectCalendar(calendarId: string | string[], calendarName?: string): Promise<void> {
+  await runCalendarRequest(async request => {
+    await postJson("/api/google-calendar/selected-calendar", { ...(Array.isArray(calendarId) ? { calendarIds: calendarId } : { calendarId }), calendarName }, request.signal);
+    if (calendarRequest === request) await loadCalendar(request);
+    if (calendarRequest === request) await refreshRotation(true, request.signal);
+  });
 }
 
-async function installCalendarItems(calendarId: string): Promise<void> {
-  await postJson("/api/google-calendar/install-rotation-items", { calendarId });
-  await refreshRotation();
+async function installCalendarItems(calendarId?: string): Promise<void> {
+  await runCalendarRequest(async request => {
+    const selected = calendar$[0]?.calendars.find(calendar => calendar.id === calendarId);
+    if (calendarId !== undefined) await postJson("/api/google-calendar/selected-calendar", { calendarId, calendarName: selected?.summary }, request.signal);
+    if (calendarRequest !== request) return;
+    await postJson("/api/google-calendar/install-rotation-items", { calendarId }, request.signal);
+    if (calendarRequest !== request) return;
+    await loadCalendar(request);
+    if (calendarRequest !== request) return;
+    await refreshRotation(false, request.signal);
+    if (calendarRequest === request) updateCalendar({ message: "Google Calendar is now showing on your Glance Board." });
+  });
+}
+
+async function hideGoogleCalendarItems(): Promise<void> {
+  await runCalendarRequest(async request => {
+    const status = await postJson<CalendarStatus>("/api/google-calendar/hide-from-display", undefined, request.signal);
+    if (calendarRequest !== request) return;
+    updateCalendar({ status, message: "Google Calendar is hidden from your board. Your Google account remains connected." });
+    await refreshRotation(false, request.signal);
+  });
 }
 
 async function refreshICloudCalendar(): Promise<void> {
@@ -401,7 +459,7 @@ async function refreshICloudCalendar(): Promise<void> {
     const [{ calendars }, { events }] = await Promise.all([
       getJson<{ calendars: ICloudCalendarOption[] }>("/api/calendar/icloud/calendars"),
       status.selectedCalendarId
-        ? getJson<{ events: CalendarEvent[] }>(icloudEventsUrl(status.selectedCalendarId, status.eventShowCount ?? 3, true))
+        ? getJson<{ events: CalendarEvent[] }>(icloudEventsUrl(undefined, status.eventShowCount ?? 3, true))
         : Promise.resolve({ events: [] })
     ]);
     await refreshRotation(true);
@@ -409,9 +467,9 @@ async function refreshICloudCalendar(): Promise<void> {
       status,
       calendars,
       events,
-      message: status.selectedCalendarName
-        ? `iCloud Calendar: connected. Selected: ${status.selectedCalendarName}.`
-        : "iCloud Calendar: connected. Select a calendar."
+      message: status.selectedCalendarIds?.length
+        ? `iCloud Calendar: connected. ${status.selectedCalendarIds.length} calendars selected.`
+        : status.selectedCalendarName ? `iCloud Calendar: connected. Selected: ${status.selectedCalendarName}.` : "iCloud Calendar: connected. Select calendars."
     });
   } catch (error) {
     updateICloudCalendar({ message: `iCloud Calendar unavailable: ${errorMessage(error)}` });
@@ -457,17 +515,17 @@ async function disconnectICloudCalendar(): Promise<void> {
   }
 }
 
-async function selectICloudCalendar(calendarId: string, calendarName: string, eventShowCount = 3): Promise<void> {
+async function selectICloudCalendar(calendarId: string | string[], calendarName?: string, eventShowCount = 3): Promise<void> {
   updateICloudCalendar({ busy: true });
   try {
-    await postJson("/api/calendar/icloud/selected-calendar", { calendarId, calendarName, eventShowCount });
+    await postJson("/api/calendar/icloud/selected-calendar", { ...(Array.isArray(calendarId) ? { calendarIds: calendarId } : { calendarId }), calendarName, eventShowCount });
     await refreshICloudCalendar();
   } catch (error) {
     updateICloudCalendar({ message: `iCloud Calendar selection failed: ${errorMessage(error)}`, busy: false });
   }
 }
 
-async function installICloudCalendarItems(calendarId: string, eventShowCount = 3): Promise<void> {
+async function installICloudCalendarItems(calendarId?: string, eventShowCount = 3): Promise<void> {
   updateICloudCalendar({ busy: true });
   try {
     const payload = await postJson<{ status?: ICloudCalendarStatus }>("/api/calendar/icloud/install-rotation-items", { calendarId, eventShowCount });
@@ -489,15 +547,15 @@ function calendarEventsUrl(calendarId?: string): string {
     : "/api/google-calendar/events?limit=3";
 }
 
-function icloudEventsUrl(calendarId: string, limit: number, refresh = false): string {
+function icloudEventsUrl(calendarId: string | undefined, limit: number, refresh = false): string {
   const refreshParam = refresh ? "&refresh=1" : "";
-  return `/api/calendar/icloud/events?calendarId=${encodeURIComponent(calendarId)}&limit=${encodeURIComponent(String(limit))}${refreshParam}`;
+  return `/api/calendar/icloud/events?${calendarId ? `calendarId=${encodeURIComponent(calendarId)}&` : ""}limit=${encodeURIComponent(String(limit))}${refreshParam}`;
 }
 
 function calendarStatusMessage(status: CalendarStatus): string {
-  if (!status.credentialsConfigured) return "Calendar: credentials missing. Add them below to enable Google sign-in.";
-  if (!status.authenticated) return `Calendar: not connected. Redirect URI: ${status.redirectUri ?? ""}`;
-  const selected = status.selectedCalendarName ?? status.selectedCalendarId ?? "none selected";
+  if (!status.credentialsConfigured) return "Google sign-in isn’t enabled on this board yet. Contact the board owner.";
+  if (!status.authenticated) return "Ready to connect. Choose Connect Google Calendar and approve read-only calendar access on Google.";
+  const selected = status.selectedCalendarIds?.length ? `${status.selectedCalendarIds.length} calendars` : status.selectedCalendarName ?? status.selectedCalendarId ?? "none selected";
   const source = status.credentialsSource === "local-file" ? "local credentials file" : "environment";
   return `Calendar: connected using ${source}. Selected: ${selected}.`;
 }

@@ -32,6 +32,10 @@ export interface LocationState {
 }
 
 export interface CalendarState {
+  discoveryState?: "idle" | "loading" | "ready" | "error";
+  discoveryError?: string;
+  setupUrl?: string;
+  disconnecting?: boolean;
   status: CalendarStatus;
   calendars: CalendarOption[];
   events: CalendarEvent[];

@@ -124,6 +124,10 @@ function matrixToRgb444(matrix: PixelMatrix, intensity: number): Buffer {
 
 function colorToRgb444(color: string, intensity: number): [number, number] {
   const level = Math.max(0.1, Math.min(1, intensity));
+  if (/^#[0-9a-f]{6}$/i.test(color)) {
+    const rgb = [1, 3, 5].map(offset => scaleNibble(Number.parseInt(color.slice(offset, offset + 2), 16) / 17, 1));
+    return scaleRgb444(rgb[0], (rgb[1] << 4) | rgb[2], level);
+  }
   if (color === "green") return scaleRgb444(0x00, 0xf0, level);
   if (color === "blue") return scaleRgb444(0x00, 0x0f, level);
   if (color === "orange") return scaleRgb444(0x0f, 0x90, level);

@@ -6,7 +6,7 @@ import type { CalendarEvent } from "../types.js";
 export const ICloudCalendarControls = tag(() =>
   subscribe(icloudCalendar$, ([state]) => {
     const status = state?.status ?? {};
-    const selectedId = status.selectedCalendarId ?? "";
+    const selectedIds = status.selectedCalendarIds ?? (status.selectedCalendarId ? [status.selectedCalendarId] : []);
     const eventShowCount = status.eventShowCount ?? 3;
 
     return section.attr("aria-labelledby", "icloudCalendarTitle")(
@@ -56,15 +56,16 @@ export const ICloudCalendarControls = tag(() =>
         button.type("button").disabled((_: unknown) => Boolean(state?.busy || !status.connected)).onClick(actions.disconnectICloudCalendar)("Disconnect")
       ),
       div.class`calendar-setup`(
-        label.class`calendar-select-label`.attr("for", "icloudCalendarSelect")("Selected iCloud calendar"),
+        label.class`calendar-select-label`.attr("for", "icloudCalendarSelect")("Selected iCloud calendars"),
         label.class`event-count-label`.attr("for", "icloudEventShowCount")("Event Show Count"),
         select
           .id("icloudCalendarSelect")
           .class`calendar-select-control`
-          .name("calendarId")
-          .value((_: unknown) => selectedId)
+          .name("calendarIds")
+          .attr("multiple", true)
+          .attr("size", 5)
           .disabled((_: unknown) => Boolean(state?.busy || !status.connected))(
-            state?.calendars.map((calendar) => option.value((_: unknown) => calendar.id)(calendar.summary))
+            state?.calendars.map((calendar) => option.value((_: unknown) => calendar.id).selected(() => selectedIds.includes(calendar.id))(calendar.summary))
           ),
         input
           .id("icloudEventShowCount")
@@ -80,17 +81,21 @@ export const ICloudCalendarControls = tag(() =>
           const control = document.getElementById("icloudCalendarSelect");
           const countControl = document.getElementById("icloudEventShowCount");
           if (!(control instanceof HTMLSelectElement)) return;
-          const selected = control.selectedOptions[0];
+          const selected = Array.from(control.selectedOptions).map(option => option.value);
           const count = countControl instanceof HTMLInputElement ? Number(countControl.value) : 3;
-          if (selected) void actions.selectICloudCalendar(selected.value, selected.textContent ?? selected.value, count);
-        })("Save Calendar"),
+          void actions.selectICloudCalendar(selected, undefined, count);
+        })("Save Calendars"),
         button.class`install-calendar-control`.type("button").disabled((_: unknown) => Boolean(state?.busy || !status.selectedCalendarId)).onClick(() => {
           const control = document.getElementById("icloudCalendarSelect");
           const countControl = document.getElementById("icloudEventShowCount");
           const count = countControl instanceof HTMLInputElement ? Number(countControl.value) : 3;
-          if (control instanceof HTMLSelectElement) void actions.installICloudCalendarItems(control.value, count);
+          if (control instanceof HTMLSelectElement) void actions.installICloudCalendarItems(undefined, count);
         })("Install Rotation Items")
       ),
+      div.class`display-actions`(
+        button.type("button").disabled(() => Boolean(state?.busy || !status.connected || !selectedIds.length)).onClick(() => actions.selectICloudCalendar([], undefined, eventShowCount))("Clear selection")
+      ),
+      p.class`muted`("Select multiple calendars with Ctrl/Command-click, then Save Calendars. Save an empty selection to clear all calendars."),
       div.class`calendar-events`(
         state?.events.length
           ? state.events.map(calendarEvent)

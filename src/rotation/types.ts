@@ -87,6 +87,7 @@ export interface NormalizedCalendarEvent {
   provider?: "google" | "icloud";
   calendarId: string;
   calendarName?: string;
+  calendarColor?: string;
   title: string;
   startTime: string;
   endTime?: string;

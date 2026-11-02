@@ -4,7 +4,7 @@ import { sanitizeDisplayText, SanitizeDisplayTextOptions } from "./text-sanitize
 export const MATRIX_WIDTH_16X96 = 96;
 export const MATRIX_HEIGHT_16X96 = 16;
 
-export type PixelColor = "off" | "green" | "blue" | "white" | "orange" | "yellow" | "purple" | "red" | "gray";
+export type PixelColor = `#${string}` | "off" | "green" | "blue" | "white" | "orange" | "yellow" | "purple" | "red" | "gray";
 export type PixelMatrix = PixelColor[][];
 
 export function createMatrix16x96(): PixelMatrix {

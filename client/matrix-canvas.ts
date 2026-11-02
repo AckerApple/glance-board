@@ -1,7 +1,8 @@
+import { normalizeCalendarColor } from "../src/matrix/color.js";
 import type { PixelColor, PixelMatrix } from "./types.js";
 import { buildScrollDownFrames } from "../src/matrix/animation.js";
 
-const colors: Record<PixelColor, string> = {
+const colors: Partial<Record<PixelColor, string>> = {
   off: "#050505",
   green: "#34d45c",
   blue: "#4ea1ff",
@@ -106,7 +107,7 @@ function drawMatrix(canvas: HTMLCanvasElement, matrix: PixelMatrix, intensity: n
 
   matrix.forEach((row, y) => {
     row.forEach((pixel, x) => {
-      context.fillStyle = scaleColor(colors[pixel] ?? colors.off, pixel === "off" ? 1 : intensity);
+      context.fillStyle = scaleColor(normalizeCalendarColor(pixel) ?? colors[pixel] ?? colors.off!, pixel === "off" ? 1 : intensity);
       context.beginPath();
       context.arc(x * cell + 5, y * cell + 5, 3.8, 0, Math.PI * 2);
       context.fill();

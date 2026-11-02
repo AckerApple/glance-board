@@ -3,6 +3,7 @@ import { readFile } from "node:fs/promises";
 import path from "node:path";
 import { DotMatrixController } from "./display.js";
 import { fetchNbaDisplayState, formatNextGameForDisplay } from "../providers/espn.js";
+import { calendarFailure, CalendarRequestError } from "../providers/calendar-error.js";
 import { GoogleCalendarService, NotConfiguredError } from "../providers/google-calendar-service.js";
 import { LocationService } from "../providers/location-service.js";
 import { ICloudCalendarService } from "../providers/icloud-calendar-service.js";
@@ -350,13 +351,24 @@ export async function startRotatingDisplayServer(port: number): Promise<Rotating
       }
 
       if (url.pathname.startsWith("/api/google-calendar/")) {
-        const handled = await handleGoogleCalendarApi(request, response, url, googleCalendar);
-        if (handled) return;
+        try {
+          const handled = await handleGoogleCalendarApi(request, response, url, googleCalendar);
+          if (handled) {
+            if (request.method === "POST" && url.pathname.endsWith("/selected-calendar")) invalidateCalendarRotation(rotationEngine);
+            return;
+          }
+        } catch (error) {
+          sendGoogleCalendarError(response, error);
+          return;
+        }
       }
 
       if (url.pathname.startsWith("/api/calendar/icloud/")) {
         const handled = await handleICloudCalendarApi(request, response, url, icloudCalendar);
-        if (handled) return;
+        if (handled) {
+          if (request.method === "POST" && url.pathname.endsWith("/selected-calendar")) invalidateCalendarRotation(rotationEngine);
+          return;
+        }
       }
 
       if (url.pathname === "/api/browser-settings" && request.method === "GET") {
@@ -594,10 +606,15 @@ async function handleICloudCalendarApi(
 
   if (url.pathname === "/api/calendar/icloud/selected-calendar" && request.method === "POST") {
     const body = await readJsonBody(request);
+    if (body.calendarIds !== undefined && (!Array.isArray(body.calendarIds) || body.calendarIds.some(id => typeof id !== "string"))) {
+      response.writeHead(400, { "content-type": "application/json" });
+      response.end(JSON.stringify({ error: "calendarIds must be an array of strings" }));
+      return true;
+    }
     const calendarId = typeof body.calendarId === "string" ? body.calendarId : "";
     const calendarName = typeof body.calendarName === "string" ? body.calendarName : undefined;
     const eventShowCount = typeof body.eventShowCount === "number" ? body.eventShowCount : undefined;
-    const settings = await icloudCalendar.saveSelectedCalendar(calendarId, calendarName, eventShowCount);
+    const settings = await icloudCalendar.saveSelectedCalendar(Array.isArray(body.calendarIds) ? body.calendarIds as string[] : calendarId, calendarName, eventShowCount);
     sendJson(response, { settings, status: await icloudCalendar.status() });
     return true;
   }
@@ -651,7 +668,7 @@ async function handleGoogleCalendarApi(
       response.writeHead(302, { location: await googleCalendar.buildAuthUrl() });
       response.end();
     } catch (error) {
-      sendGoogleCalendarError(response, error);
+      sendHtml(response, "Google Calendar setup needed", "Google sign-in hasn’t been enabled on this board. Return to Calendars and contact the board owner, or open Board owner settings if you manage this board.");
     }
     return true;
   }
@@ -659,15 +676,19 @@ async function handleGoogleCalendarApi(
   if (url.pathname === "/api/google-calendar/auth/callback" && request.method === "GET") {
     const code = url.searchParams.get("code");
     if (!code) {
-      sendHtml(response, "Google Calendar setup failed", "Google did not return an authorization code.");
+      sendHtml(response, "Google Calendar not connected", url.searchParams.get("error") === "access_denied"
+        ? "You cancelled or declined Calendar access. Nothing was connected. Return to Calendars to try again."
+        : "Google did not return a sign-in code. Return to Calendars and choose Connect Google Calendar again.");
       return true;
     }
 
     try {
-      await googleCalendar.handleCallback(code);
-      sendHtml(response, "Google Calendar connected", "You can close this tab or return to the display app.");
+      await googleCalendar.handleCallback(code, url.searchParams.get("state") ?? undefined);
+      response.writeHead(302, { location: "/#/calendars", "cache-control": "no-store" });
+      response.end();
     } catch (error) {
-      sendHtml(response, "Google Calendar setup failed", error instanceof Error ? error.message : String(error));
+      sendHtml(response, "Google Calendar setup failed", error instanceof Error && /^(Google |Calendar permission)/.test(error.message)
+        ? error.message : "Sign-in could not be completed. Return to Calendars and try connecting again.");
     }
     return true;
   }
@@ -685,14 +706,19 @@ async function handleGoogleCalendarApi(
 
   if (url.pathname === "/api/google-calendar/selected-calendar" && request.method === "POST") {
     const body = await readJsonBody(request);
+    if (body.calendarIds !== undefined && (!Array.isArray(body.calendarIds) || body.calendarIds.some(id => typeof id !== "string"))) {
+      response.writeHead(400, { "content-type": "application/json" });
+      response.end(JSON.stringify({ error: "calendarIds must be an array of strings" }));
+      return true;
+    }
     const calendarId = typeof body.calendarId === "string" ? body.calendarId : "";
     const calendarName = typeof body.calendarName === "string" ? body.calendarName : undefined;
-    if (!calendarId) {
+    if (!calendarId && !Array.isArray(body.calendarIds)) {
       response.writeHead(400, { "content-type": "application/json" });
       response.end(JSON.stringify({ error: "calendarId is required" }));
       return true;
     }
-    const settings = await googleCalendar.saveSelectedCalendar(calendarId, calendarName);
+    const settings = await googleCalendar.saveSelectedCalendar(Array.isArray(body.calendarIds) ? body.calendarIds as string[] : calendarId, calendarName);
     sendJson(response, { settings, status: await googleCalendar.status() });
     return true;
   }
@@ -701,6 +727,12 @@ async function handleGoogleCalendarApi(
     const calendarId = url.searchParams.get("calendarId") ?? undefined;
     const limit = Number(url.searchParams.get("limit") ?? 3);
     sendJson(response, { events: await googleCalendar.getUpcomingEvents(calendarId, Number.isFinite(limit) ? limit : 3) });
+    return true;
+  }
+
+  if (url.pathname === "/api/google-calendar/hide-from-display" && request.method === "POST") {
+    await googleCalendar.hideFromDisplay();
+    sendJson(response, await googleCalendar.status());
     return true;
   }
 
@@ -856,14 +888,15 @@ function sendJson(response: http.ServerResponse, payload: unknown): void {
 }
 
 function sendHtml(response: http.ServerResponse, title: string, message: string): void {
-  response.writeHead(200, { "content-type": "text/html; charset=utf-8" });
-  response.end(`<!doctype html><html><head><meta charset="utf-8"><title>${escapeHtml(title)}</title></head><body><h1>${escapeHtml(title)}</h1><p>${escapeHtml(message)}</p><p><a href="/">Return to display app</a></p></body></html>`);
+  response.writeHead(200, { "content-type": "text/html; charset=utf-8", "cache-control": "no-store", "referrer-policy": "no-referrer" });
+  response.end(`<!doctype html><html><head><meta charset="utf-8"><title>${escapeHtml(title)}</title></head><body><h1>${escapeHtml(title)}</h1><p>${escapeHtml(message)}</p><p><a href="/#/calendars">Return to Calendars</a></p></body></html>`);
 }
 
 function sendGoogleCalendarError(response: http.ServerResponse, error: unknown): void {
-  const status = error instanceof NotConfiguredError ? 400 : 500;
-  response.writeHead(status, { "content-type": "application/json" });
-  response.end(JSON.stringify({ error: error instanceof Error ? error.message : String(error) }));
+  const status = error instanceof NotConfiguredError ? 400 : error instanceof CalendarRequestError && [401, 403].includes(error.status) ? error.status : 502;
+  const message = calendarFailure(error).detail.replace("; retrying automatically", "; try Refresh or reconnect your account");
+  response.writeHead(status, { "content-type": "application/json", "cache-control": "no-store" });
+  response.end(JSON.stringify({ error: message, code: error instanceof CalendarRequestError ? error.code : undefined, setupUrl: error instanceof CalendarRequestError ? error.setupUrl : undefined }));
 }
 
 function escapeHtml(value: string): string {
