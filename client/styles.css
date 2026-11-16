@@ -422,6 +422,50 @@ button:disabled {
   accent-color: var(--green);
 }
 
+.calendar-provider-card {
+  min-width: 0;
+  margin-bottom: 28px;
+  padding: clamp(18px, 3vw, 30px);
+  border: 1px solid #414141;
+  border-radius: 16px;
+  background: var(--panel);
+  box-shadow: 0 8px 24px #0004;
+  overflow-wrap: anywhere;
+}
+
+.calendar-provider-card > h2 {
+  margin-bottom: 20px;
+  padding-bottom: 16px;
+  border-bottom: 1px solid var(--line);
+  font-size: 22px;
+}
+
+.calendar-provider-card > :last-child {
+  margin-bottom: 0;
+}
+
+.calendar-provider-card .calendar-events > div,
+.calendar-provider-card .google-calendar-help,
+.calendar-provider-card .google-calendar-config {
+  background: var(--bg);
+}
+
+.calendar-provider-card button {
+  max-width: 100%;
+  white-space: normal;
+}
+
+.calendar-provider-card .credentials-form {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.calendar-provider-card input,
+.calendar-provider-card select {
+  min-width: 0;
+  max-width: 100%;
+  box-sizing: border-box;
+}
+
 .calendar-setup {
   display: grid;
   grid-template-columns: minmax(220px, 1fr) minmax(140px, 180px) auto auto;
@@ -646,3 +690,19 @@ summary {
 .google-account-status { font-weight: 700; }
 .google-calendar-discovery-error { border-left: 3px solid var(--red); padding: 8px 16px; background: var(--panel); }
 .google-calendar-discovery-error a { color: var(--orange); }
+
+/* Keep provider controls inside their card on narrow screens. Explicit child
+   columns must reset too, otherwise they create implicit columns and overflow. */
+@media (max-width: 900px) {
+  .calendar-provider-card .calendar-setup {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .calendar-provider-card .calendar-setup > * {
+    grid-column: 1;
+  }
+
+  .calendar-provider-card .calendar-select-control { grid-row: 2; }
+  .calendar-provider-card .event-count-label { grid-row: 3; }
+  .calendar-provider-card .event-count-control { grid-row: 4; }
+}

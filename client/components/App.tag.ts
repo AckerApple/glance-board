@@ -44,7 +44,6 @@ export const NavigationLayout = tag((page: PageId) => {
       p.class`muted`("Connect calendars, choose upcoming events, and add them to your display rotation."),
       hr(),
       CalendarControls(),
-      hr(),
       ICloudCalendarControls()
     )
   );

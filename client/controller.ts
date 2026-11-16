@@ -100,7 +100,25 @@ async function refreshRotation(refreshCalendar = false, signal?: AbortSignal): P
   applyRotation(payload);
 }
 
+function withoutDisconnectedCalendars(payload: RotationPayload): RotationPayload {
+  if (!payload.rotation) return payload;
+  const rotation = payload.rotation;
+  const cards = (rotation.cards ?? []).filter(card =>
+    !(card.type === "google-calendar-next-event" && calendar$[0].status.authenticated === false) &&
+    !(card.type === "icloud-calendar-next-event" && icloudCalendar$[0].status.connected === false));
+  const activeCard = cards.find(card => card.id === rotation.activeCard?.id) ?? cards[0];
+  return { ...payload, rotation: { ...payload.rotation, cards, activeCard } };
+}
+
+function clearDisconnectedRotation(): void {
+  const payload = rotation$[0]?.payload;
+  if (!payload) return;
+  const next = withoutDisconnectedCalendars(payload);
+  updateRotation({ payload: next, currentCardId: next.rotation?.cards?.find(card => card.id === rotation$[0].currentCardId)?.id ?? next.rotation?.activeCard?.id });
+}
+
 function applyRotation(payload: RotationPayload, options: { preferBackendActive?: boolean } = {}): void {
+  payload = withoutDisconnectedCalendars(payload);
   const backendActiveId = payload.rotation?.activeCard?.id;
   const preferred = hardware$[0]?.autoSend || options.preferBackendActive ? backendActiveId : rotation$[0]?.currentCardId;
   const cards = availableCards(payload);
@@ -406,7 +424,10 @@ async function saveCalendarCredentials(values: { clientId: string; clientSecret:
 async function disconnectCalendar(): Promise<void> {
   await runCalendarRequest(async request => {
     const status = await postJson<CalendarStatus>("/api/google-calendar/auth/logout", undefined, request.signal);
-    if (calendarRequest === request) updateCalendar({ status, calendars: [], events: [], discoveryState: "idle", discoveryError: undefined, setupUrl: undefined, message: "Google Calendar disconnected." });
+    if (calendarRequest === request) {
+      updateCalendar({ status: { ...status, authenticated: false }, calendars: [], events: [], discoveryState: "idle", discoveryError: undefined, setupUrl: undefined, message: "Google Calendar disconnected. Its events have been removed from rotation." });
+      clearDisconnectedRotation();
+    }
   }, true);
 }
 
@@ -441,10 +462,14 @@ async function hideGoogleCalendarItems(): Promise<void> {
   });
 }
 
+let icloudRequestVersion = 0;
+
 async function refreshICloudCalendar(): Promise<void> {
+  const version = ++icloudRequestVersion;
   updateICloudCalendar({ busy: true });
   try {
     const status = await getJson<ICloudCalendarStatus>("/api/calendar/icloud/status");
+    if (version !== icloudRequestVersion) return;
     updateICloudCalendar({ status });
     if (!status.connected) {
       updateICloudCalendar({
@@ -462,7 +487,9 @@ async function refreshICloudCalendar(): Promise<void> {
         ? getJson<{ events: CalendarEvent[] }>(icloudEventsUrl(undefined, status.eventShowCount ?? 3, true))
         : Promise.resolve({ events: [] })
     ]);
+    if (version !== icloudRequestVersion) return;
     await refreshRotation(true);
+    if (version !== icloudRequestVersion) return;
     updateICloudCalendar({
       status,
       calendars,
@@ -472,9 +499,10 @@ async function refreshICloudCalendar(): Promise<void> {
         : status.selectedCalendarName ? `iCloud Calendar: connected. Selected: ${status.selectedCalendarName}.` : "iCloud Calendar: connected. Select calendars."
     });
   } catch (error) {
+    if (version !== icloudRequestVersion) return;
     updateICloudCalendar({ message: `iCloud Calendar unavailable: ${errorMessage(error)}` });
   } finally {
-    updateICloudCalendar({ busy: false });
+    if (version === icloudRequestVersion) updateICloudCalendar({ busy: false });
   }
 }
 
@@ -499,15 +527,17 @@ async function connectICloudCalendar(values: { appleId: string; appSpecificPassw
 }
 
 async function disconnectICloudCalendar(): Promise<void> {
+  ++icloudRequestVersion;
   updateICloudCalendar({ busy: true });
   try {
     const status = await postJson<ICloudCalendarStatus>("/api/calendar/icloud/disconnect");
     updateICloudCalendar({
-      status,
+      status: { ...status, connected: false },
       calendars: [],
       events: [],
-      message: "iCloud Calendar: disconnected."
+      message: "iCloud Calendar: disconnected. Its events have been removed from rotation."
     });
+    clearDisconnectedRotation();
   } catch (error) {
     updateICloudCalendar({ message: `iCloud Calendar disconnect failed: ${errorMessage(error)}` });
   } finally {

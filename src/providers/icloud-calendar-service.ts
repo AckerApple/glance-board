@@ -60,6 +60,7 @@ const defaultStorage: ICloudCalendarStorage = {
 export class ICloudCalendarService {
   private static readonly instances = new Set<ICloudCalendarService>();
   private client?: CalDavClientLike;
+  private generation = 0;
   private eventCache = new Map<string, { expiresAt: number; events: NormalizedCalendarEvent[] }>();
   private readonly createClient: NonNullable<ICloudCalendarServiceOptions["createClient"]>;
   private readonly storage: ICloudCalendarStorage;
@@ -102,8 +103,12 @@ export class ICloudCalendarService {
       this.storage.remove(CREDENTIALS_FILE),
       this.storage.remove(SETTINGS_FILE)
     ]);
-    this.client = undefined;
-    this.eventCache.clear();
+    for (const instance of ICloudCalendarService.instances) {
+      if (instance.storage !== this.storage) continue;
+      instance.generation += 1;
+      instance.client = undefined;
+      instance.eventCache.clear();
+    }
   }
 
   async listCalendars(): Promise<ICloudCalendarOption[]> {
@@ -138,16 +143,19 @@ export class ICloudCalendarService {
   }
 
   async getUpcomingEvents(calendarId: string | undefined, limit = 3): Promise<NormalizedCalendarEvent[]> {
+    const generation = this.generation;
     const settings = await this.getSettings();
     const ids = calendarSelection(calendarId ?? settings.calendarIds ?? settings.calendarId);
     if (!ids.length) throw new ICloudNotConfiguredError("No iCloud Calendar selected");
     const client = await this.getClient();
+    if (generation !== this.generation) throw new ICloudNotConfiguredError("iCloud Calendar disconnected");
     let calendars: Promise<Calendar[]> | undefined;
     const loadCalendars = () => calendars ??= client.getCalendars().catch(() => []);
     return combineCalendarEvents(await Promise.all(ids.map(id => this.getCalendarEvents(id, limit, client, loadCalendars, id === settings.calendarId ? settings.calendarName : undefined))), limit);
   }
 
   private async getCalendarEvents(selectedCalendarId: string, limit: number, client: CalDavClientLike, loadCalendars: () => Promise<Calendar[]>, calendarName?: string): Promise<NormalizedCalendarEvent[]> {
+    const generation = this.generation;
     const cached = this.eventCache.get(selectedCalendarId);
     if (cached && cached.expiresAt > Date.now() && cached.events.length >= limit) {
       return combineCalendarEvents([cached.events], limit);
@@ -165,6 +173,7 @@ export class ICloudCalendarService {
       .filter((event) => eventStart(event) >= start.getTime())
       .sort((left, right) => eventStart(left) - eventStart(right));
     for (const event of events) event.calendarColor = normalizeCalendarColor(calendar?.color);
+    if (generation !== this.generation) throw new ICloudNotConfiguredError("iCloud Calendar disconnected");
     this.eventCache.set(selectedCalendarId, { expiresAt: Date.now() + CACHE_MS, events });
     return combineCalendarEvents([events], limit);
   }
@@ -197,8 +206,11 @@ export class ICloudCalendarService {
 
   private async getClient(): Promise<CalDavClientLike> {
     if (this.client) return this.client;
+    const generation = this.generation;
     const credentials = normalizeCredentials(await this.getCredentials());
-    this.client = await this.createClient(credentials);
+    const client = await this.createClient(credentials);
+    if (generation !== this.generation) throw new ICloudNotConfiguredError("iCloud Calendar disconnected");
+    this.client = client;
     return this.client;
   }
 

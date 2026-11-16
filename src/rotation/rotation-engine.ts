@@ -15,6 +15,7 @@ interface CachedCard {
 
 export class RotationEngine {
   private activeIndex = 0;
+  private revision = 0;
   private readonly calendarReports = new Map<string, { detail: string; at: number }>();
   private latestCards: NormalizedDisplayCard[] = [];
   private readonly cache = new Map<string, CachedCard>();
@@ -29,10 +30,12 @@ export class RotationEngine {
   ) {}
 
   async refresh(): Promise<RotationDisplayState> {
+    const revision = this.revision;
     const config = await this.loadConfig();
     const enabledItems = config.items.filter((item) => item.enabled);
     const nowMs = this.nowMs();
     const cards = (await Promise.all(enabledItems.map((item) => this.resolveForRotation(item, nowMs)))).filter((card): card is NormalizedDisplayCard => Boolean(card));
+    if (revision !== this.revision) return this.refresh();
     this.latestCards = cards;
     this.activeIndex = normalizeIndex(this.activeIndex, cards.length);
     const lastUpdated = new Date(nowMs).toISOString();
@@ -81,14 +84,13 @@ export class RotationEngine {
   }
 
   invalidate(predicate?: (item: DisplayItemConfig) => boolean): void {
-    if (!predicate) {
-      this.cache.clear();
-      return;
-    }
-
+    this.revision += 1;
+    const matches = predicate ?? (() => true);
     for (const [id, cached] of this.cache) {
-      if (predicate(cached.item)) this.cache.delete(id);
+      if (matches(cached.item)) this.cache.delete(id);
     }
+    this.latestCards = this.latestCards.filter(card => !matches(card));
+    this.activeIndex = normalizeIndex(this.activeIndex, this.latestCards.length);
   }
 
   private async resolveForRotation(item: DisplayItemConfig, nowMs: number): Promise<NormalizedDisplayCard | undefined> {
@@ -104,8 +106,10 @@ export class RotationEngine {
   }
 
   private async resolveAndCache(item: DisplayItemConfig, nowMs: number, configSignature: string, cached: CachedCard | undefined): Promise<NormalizedDisplayCard | undefined> {
+    const revision = this.revision;
     try {
       const card = await this.resolver.resolve(item);
+      if (revision !== this.revision) return undefined;
       if (isCalendar(item)) {
         if (card.status === "error" || card.status === "not_configured") {
           this.reportCalendar(item, card.error ?? card.calendar?.error ?? "Calendar request failed; retrying automatically", nowMs);
@@ -122,6 +126,7 @@ export class RotationEngine {
       this.cache.set(item.id, { card, item, configSignature, updatedAtMs: nowMs });
       return card;
     } catch (error) {
+      if (revision !== this.revision) return undefined;
       if (isCalendar(item)) {
         const failure = calendarFailure(error);
         const card: NormalizedDisplayCard = { ...item, title: "Calendar", status: "error", error: failure.detail, readableLines: failure.lines, matrixLines: failure.lines };
@@ -143,11 +148,13 @@ export class RotationEngine {
 
   private queueBackgroundRefresh(item: DisplayItemConfig, configSignature: string): void {
     if (this.backgroundRefreshIds.has(item.id)) return;
+    const revision = this.revision;
     this.backgroundRefreshIds.add(item.id);
     this.backgroundRefreshQueue = this.backgroundRefreshQueue
       .catch(() => undefined)
       .then(async () => {
         try {
+          if (revision !== this.revision) return;
           await this.resolveAndCache(item, this.nowMs(), configSignature, this.cache.get(item.id));
         } finally {
           this.backgroundRefreshIds.delete(item.id);
@@ -208,5 +215,5 @@ function isCalendar(item: DisplayItemConfig): boolean {
 }
 
 function hiddenCalendarCard(card: NormalizedDisplayCard): boolean {
-  return isCalendar(card) && card.status === "error" && card.readableLines.length === 0;
+  return isCalendar(card) && (card.status === "not_configured" || card.calendar?.status === "not_configured" || (card.status === "error" && card.readableLines.length === 0));
 }

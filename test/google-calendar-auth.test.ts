@@ -182,3 +182,22 @@ test("unverified identity is not presented as the connected account", async () =
     assert.equal((await service.status()).authenticated, true);
   } finally { globalThis.fetch = original; }
 });
+
+test("logout rejects late events so another service cannot repopulate its cache", async () => {
+  const { files, service, storage } = fixture();
+  files.set('google-calendar-token.json', { access_token: 'synthetic', expires_at: Date.now() + 3600000 });
+  const resolver = new GoogleCalendarService(3010, storage);
+  let release: ((response: Response) => void) | undefined;
+  const original = globalThis.fetch;
+  try {
+    globalThis.fetch = async () => new Promise(resolve => { release = resolve; });
+    const pending = resolver.getUpcomingEvents('primary');
+    const rejection = assert.rejects(pending, /cancelled/);
+    await new Promise(resolve => setImmediate(resolve));
+    assert.ok(release);
+    await service.logout();
+    release(new Response(JSON.stringify({ items: [{ id: 'late', summary: 'Stale', start: { dateTime: '2099-01-01T10:00:00Z' } }] })));
+    await rejection;
+    await assert.rejects(resolver.getUpcomingEvents('primary'), /not authenticated/);
+  } finally { globalThis.fetch = original; }
+});

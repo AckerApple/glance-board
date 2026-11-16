@@ -172,6 +172,7 @@ export class GoogleCalendarService {
   }
 
   private async getCalendarEvents(selectedCalendarId: string, limit: number, calendarName?: string): Promise<NormalizedCalendarEvent[]> {
+    const generation = this.signIn.version;
     const cached = this.eventCache.get(selectedCalendarId);
     if (cached && cached.expiresAt > Date.now() && cached.events.length >= limit) return combineCalendarEvents([cached.events], limit);
 
@@ -187,6 +188,7 @@ export class GoogleCalendarService {
     ).catch(() => undefined);
     const events = (payload.items ?? []).map((event) => normalizeGoogleEvent(event, selectedCalendarId, calendar?.summary ?? calendarName)).filter(Boolean) as NormalizedCalendarEvent[];
     for (const event of events) event.calendarColor = normalizeCalendarColor(calendar?.backgroundColor);
+    this.signIn.assertCurrent(generation);
     this.eventCache.set(selectedCalendarId, { expiresAt: Date.now() + CACHE_MS, events });
     return combineCalendarEvents([events], limit);
   }

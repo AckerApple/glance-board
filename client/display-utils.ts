@@ -10,6 +10,11 @@ export function cardForId(payload: RotationPayload | undefined, id: string | und
 
 export function visibleCard(payload: RotationPayload | undefined, id: string | undefined): DisplayCard | undefined {
   if (!payload) return undefined;
+  if (payload.rotation && !availableCards(payload).length) return {
+    id: "empty-rotation", title: "No displays", status: "no_game",
+    readableLines: ["No active displays"],
+    dotMatrix: Array.from({ length: 16 }, () => Array.from({ length: 96 }, () => "off" as const))
+  };
   return cardForId(payload, id) ?? payload.rotation?.activeCard ?? {
     title: "NBA Legacy",
     status: payload.game.status,

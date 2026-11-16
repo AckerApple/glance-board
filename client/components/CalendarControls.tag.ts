@@ -16,7 +16,7 @@ export const GoogleCalendarPanel = tag((state: CalendarState) => {
       selectedIds = status.selectedCalendarIds ?? (status.selectedCalendarId ? [status.selectedCalendarId] : []);
     });
 
-    return section.attr("aria-labelledby", "googleCalendarTitle")(
+    return section.class`calendar-provider-card`.attr("aria-labelledby", "googleCalendarTitle")(
       h2.id("googleCalendarTitle")("📅 Google Calendar"),
       p("Connect your Google account, allow read-only access, then choose the calendars to show. Glanceboard cannot edit or delete your Google events."),
       p.class`google-setup-status`(() => status.credentialsConfigured ? "✓ Google setup saved on this board. Your keys stay private; blank credential fields do not mean they were lost." : "Google app setup has not been saved on this board yet."),

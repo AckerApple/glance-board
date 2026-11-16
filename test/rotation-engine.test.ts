@@ -242,3 +242,57 @@ async function eventually(assertion: () => void): Promise<void> {
   }
   throw lastError;
 }
+
+test("disconnect invalidation removes only that provider and rejects a late in-flight card", async () => {
+  const items: DisplayItemConfig[] = [
+    { id: "icloud", enabled: true, type: "icloud-calendar-next-event" },
+    { id: "google", enabled: true, type: "google-calendar-next-event" },
+    { id: "clock", enabled: true, type: "date-time" }
+  ];
+  let connected = true;
+  let now = 0;
+  let release: (() => void) | undefined;
+  let delayed = false;
+  const engine = new RotationEngine({ async resolve(item) {
+    const wasConnected = connected;
+    if (item.id === "icloud" && delayed && wasConnected) await new Promise<void>(resolve => { release = resolve; });
+    return { ...item, title: item.id, status: item.id === "icloud" && !wasConnected ? "not_configured" : "live", readableLines: [item.id], matrixLines: [item.id] };
+  } }, async () => ({ rotationSeconds: 10, items }), 15, () => now);
+  await engine.refresh();
+  engine.select("icloud");
+  now = 301_000;
+  delayed = true;
+  await engine.refresh(); // starts a background refresh with the old session
+  await new Promise(resolve => setImmediate(resolve));
+  assert.ok(release);
+  connected = false;
+  engine.invalidate(item => item.type === "icloud-calendar-next-event");
+  assert.equal(engine.select("icloud"), undefined);
+  const after = await engine.refresh();
+  assert.deepEqual(after.cards.map(card => card.id), ["google", "clock"]);
+  assert.equal(after.items.length, 3); // layout retained for reconnection
+  release();
+  await new Promise(resolve => setImmediate(resolve));
+  assert.deepEqual((await engine.refresh()).cards.map(card => card.id), ["google", "clock"]);
+});
+
+test("invalidation during the first resolve cannot publish an old active calendar", async () => {
+  const item: DisplayItemConfig = { id: "calendar", enabled: true, type: "icloud-calendar-next-event" };
+  let connected = true;
+  let release: (() => void) | undefined;
+  const engine = new RotationEngine({ async resolve(config) {
+    const oldSession = connected;
+    if (oldSession) await new Promise<void>(resolve => { release = resolve; });
+    return { ...config, title: "Calendar", status: oldSession ? "live" : "not_configured", readableLines: ["event"], matrixLines: ["event"] };
+  } }, async () => ({ rotationSeconds: 10, items: [item] }));
+  const pending = engine.refresh();
+  await new Promise(resolve => setImmediate(resolve));
+  assert.ok(release);
+  connected = false;
+  engine.invalidate(config => config.type === "icloud-calendar-next-event");
+  release();
+  const result = await pending;
+  assert.deepEqual(result.cards, []);
+  assert.equal(result.activeCard, undefined);
+  assert.equal(engine.next(), undefined);
+});

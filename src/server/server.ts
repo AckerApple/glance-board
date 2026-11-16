@@ -33,6 +33,8 @@ export async function startRotatingDisplayServer(port: number): Promise<Rotating
   const vite = await createViteDevServer();
   let latestState: NbaDisplayState | undefined;
   let latestRotation: RotationDisplayState | undefined;
+  let calendarRevision = 0;
+  let sendingCard: NormalizedDisplayCard | undefined;
   let activeCardId: string | undefined;
   let rotationPaused = false;
   let rotationTimer: NodeJS.Timeout | undefined;
@@ -158,9 +160,11 @@ export async function startRotatingDisplayServer(port: number): Promise<Rotating
 
     rotationTickInFlight = true;
     const paceForTick = rotationPace;
+    const revision = calendarRevision;
     let completedSuccessfully = false;
     try {
       const [state, rotation] = await Promise.all([fetchNbaDisplayStateSafe(latestState), rotationEngine.refresh()]);
+      if (revision !== calendarRevision) return;
       latestState = state;
       latestRotation = rotation;
       const currentCard = activeCardId ? rotation.cards.find((candidate) => candidate.id === activeCardId) : undefined;
@@ -169,7 +173,9 @@ export async function startRotatingDisplayServer(port: number): Promise<Rotating
         log("✏️", currentCard && currentCard.id !== card.id ? `${currentCard.title} → ${card.title}` : card.title);
         const sendStartedAt = Date.now();
         const secondsForTick = displaySeconds(rotation.rotationSeconds);
+        sendingCard = card;
         const status = await display.sendCardTransition(currentCard?.id === card.id ? undefined : currentCard, card, paceForTick, secondsForTick);
+        if (revision !== calendarRevision) return;
         log("⏱️", `sent in ${formatDelay(Date.now() - sendStartedAt)}`);
         log(status.status === "error" ? "⚠️" : "✅", status.status === "error" ? status.lastMessage ?? card.title : card.title);
         if (status.status === "error" || !display.isConnected()) {
@@ -188,6 +194,7 @@ export async function startRotatingDisplayServer(port: number): Promise<Rotating
     } catch (error) {
       log("⚠️", error instanceof Error ? error.message : String(error));
     } finally {
+      sendingCard = undefined;
       rotationTickInFlight = false;
       if (completedSuccessfully && display.isConnected()) {
         const seconds = displaySeconds(latestRotation?.rotationSeconds ?? 10);
@@ -222,6 +229,25 @@ export async function startRotatingDisplayServer(port: number): Promise<Rotating
 
   const logDisplaySeconds = (normalSeconds: number) => {
     log("⏲️", `display ${displaySeconds(normalSeconds)}s per slide`);
+  };
+
+  const calendarDisconnected = async (type: "google-calendar-next-event" | "icloud-calendar-next-event") => {
+    const staleOnScreen = sendingCard?.type === type || latestRotation?.cards.some(card => card.id === activeCardId && card.type === type);
+    calendarRevision += 1;
+    rotationEngine.invalidate(item => item.type === type);
+    latestRotation = { ...await rotationEngine.refresh(), paused: rotationPaused };
+    latestRotation.activeCard = latestRotation.cards.find(card => card.id === activeCardId) ?? latestRotation.activeCard;
+    activeCardId = latestRotation.activeCard?.id;
+    broadcastRotation();
+    // A paused or calendar-only board must not leave the old event on the LEDs.
+    // sendCard is serialized behind a transition already in flight.
+    if (staleOnScreen && display.isConnectedOrSending()) {
+      await display.sendCard(latestRotation.activeCard ?? {
+        id: "empty-rotation", type: "date-time", enabled: true, title: "No displays",
+        status: "no_game", readableLines: ["NO DISPLAYS"], matrixLines: ["NO DISPLAYS"]
+      });
+    }
+    scheduleBackendRotation();
   };
 
   const settings = await browserSettings.get();
@@ -352,7 +378,7 @@ export async function startRotatingDisplayServer(port: number): Promise<Rotating
 
       if (url.pathname.startsWith("/api/google-calendar/")) {
         try {
-          const handled = await handleGoogleCalendarApi(request, response, url, googleCalendar);
+          const handled = await handleGoogleCalendarApi(request, response, url, googleCalendar, () => calendarDisconnected("google-calendar-next-event"));
           if (handled) {
             if (request.method === "POST" && url.pathname.endsWith("/selected-calendar")) invalidateCalendarRotation(rotationEngine);
             return;
@@ -364,7 +390,7 @@ export async function startRotatingDisplayServer(port: number): Promise<Rotating
       }
 
       if (url.pathname.startsWith("/api/calendar/icloud/")) {
-        const handled = await handleICloudCalendarApi(request, response, url, icloudCalendar);
+        const handled = await handleICloudCalendarApi(request, response, url, icloudCalendar, () => calendarDisconnected("icloud-calendar-next-event"));
         if (handled) {
           if (request.method === "POST" && url.pathname.endsWith("/selected-calendar")) invalidateCalendarRotation(rotationEngine);
           return;
@@ -576,7 +602,8 @@ async function handleICloudCalendarApi(
   request: http.IncomingMessage,
   response: http.ServerResponse,
   url: URL,
-  icloudCalendar: ICloudCalendarService
+  icloudCalendar: ICloudCalendarService,
+  onDisconnect: () => Promise<void>
 ): Promise<boolean> {
   if (url.pathname === "/api/calendar/icloud/status" && request.method === "GET") {
     sendJson(response, await icloudCalendar.status());
@@ -595,6 +622,7 @@ async function handleICloudCalendarApi(
 
   if (url.pathname === "/api/calendar/icloud/disconnect" && request.method === "POST") {
     await icloudCalendar.disconnect();
+    await onDisconnect();
     sendJson(response, await icloudCalendar.status());
     return true;
   }
@@ -645,7 +673,8 @@ async function handleGoogleCalendarApi(
   request: http.IncomingMessage,
   response: http.ServerResponse,
   url: URL,
-  googleCalendar: GoogleCalendarService
+  googleCalendar: GoogleCalendarService,
+  onDisconnect: () => Promise<void>
 ): Promise<boolean> {
   if (url.pathname === "/api/google-calendar/status" && request.method === "GET") {
     sendJson(response, await googleCalendar.status());
@@ -695,6 +724,7 @@ async function handleGoogleCalendarApi(
 
   if (url.pathname === "/api/google-calendar/auth/logout" && request.method === "POST") {
     await googleCalendar.logout();
+    await onDisconnect();
     sendJson(response, await googleCalendar.status());
     return true;
   }
@@ -755,7 +785,8 @@ async function handleScoreApi(
   paused: boolean,
   effectiveRotationSeconds?: (normalSeconds: number) => number
 ): Promise<{ legacyState: NbaDisplayState; rotation: RotationDisplayState; payload: RotationPayload }> {
-  const [state, rotation] = await Promise.all([fetchNbaDisplayStateSafe(), rotationEngine.refresh()]);
+  const state = await fetchNbaDisplayStateSafe();
+  const rotation = await rotationEngine.refresh();
   if (effectiveRotationSeconds) rotation.rotationSeconds = effectiveRotationSeconds(rotation.rotationSeconds);
   if (preferredCardId) {
     const activeCard = rotationEngine.select(preferredCardId);

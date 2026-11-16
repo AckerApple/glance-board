@@ -407,3 +407,24 @@ function eventFixture(
     ...patch
   };
 }
+
+test("disconnect clears a separate resolver client's cache and rejects its in-flight fetch", async () => {
+  const storage = createMemoryStorage();
+  storage.files.set("icloud-calendar-credentials.json", { appleId: "test@example.com", appSpecificPassword: "synthetic" });
+  let release: ((events: Event[]) => void) | undefined;
+  const resolverService = new ICloudCalendarService({ storage, createClient: async () => ({
+    async getCalendars() { return []; },
+    async getEvents() { return new Promise<Event[]>(resolve => { release = resolve; }); }
+  }) });
+  const apiService = new ICloudCalendarService({ storage });
+  const pending = resolverService.getUpcomingEvents("https://example.test/calendar/");
+  const rejected = assert.rejects(pending, /disconnected/);
+  await new Promise(resolve => setImmediate(resolve));
+  assert.ok(release);
+  const originalConfig = structuredClone(storage.displayConfig);
+  await apiService.disconnect();
+  release([]);
+  await rejected;
+  await assert.rejects(resolverService.getUpcomingEvents("https://example.test/calendar/"));
+  assert.deepEqual(storage.displayConfig, originalConfig);
+});

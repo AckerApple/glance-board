@@ -9,7 +9,7 @@ export const ICloudCalendarControls = tag(() =>
     const selectedIds = status.selectedCalendarIds ?? (status.selectedCalendarId ? [status.selectedCalendarId] : []);
     const eventShowCount = status.eventShowCount ?? 3;
 
-    return section.attr("aria-labelledby", "icloudCalendarTitle")(
+    return section.class`calendar-provider-card`.attr("aria-labelledby", "icloudCalendarTitle")(
       h2.id("icloudCalendarTitle")("🍎 🗓️ iCloud Calendar"),
       p.class`muted`(state?.message ?? "iCloud Calendar: checking setup..."),
       div.class`calendar-security-note`(

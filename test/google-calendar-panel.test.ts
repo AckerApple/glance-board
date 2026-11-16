@@ -17,6 +17,7 @@ test("Google setup explains login and reacts to connection changes without expos
   try {
     const panel = component.original(initial);
     const setup = panel.render();
+    assert.match(setup, /<section[^>]*class="calendar-provider-card"[^>]*aria-labelledby="googleCalendarTitle"/);
     assert.match(setup, /Board owner settings/);
     assert.match(setup, /Open OAuth clients/);
     assert.match(setup, /Enable Calendar API/);
