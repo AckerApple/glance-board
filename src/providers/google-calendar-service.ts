@@ -198,6 +198,11 @@ export class GoogleCalendarService {
     const ids = calendarSelection(calendarId ?? settings.calendarIds ?? settings.calendarId ?? "primary");
     if (!ids.length) throw new NotConfiguredError("No Google Calendar selected");
     const selectedCalendarId = calendarId === undefined && settings.calendarIds !== undefined ? undefined : ids[0];
+    // Installation must register its source too, including the legacy default
+    // primary-calendar API, so startup reconciliation can distinguish an orphan.
+    if (calendarId !== undefined || (!settings.calendarId && settings.calendarIds === undefined)) {
+      await this.storage.write(SETTINGS_FILE, { calendarId: ids[0], calendarName: settings.calendarName });
+    }
     const config = await this.storage.loadDisplayConfig();
     const nextItems = buildGoogleCalendarRotationItems(selectedCalendarId);
     const nextIds = new Set(nextItems.map((item) => item.id));

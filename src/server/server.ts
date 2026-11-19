@@ -11,7 +11,7 @@ import { BrowserSettingsService } from "../providers/browser-settings-service.js
 import { renderDisplayCardPreviewMatrix, renderNbaDisplayModeToMatrix, renderNbaGameToMatrix, renderNbaNextGameToMatrix } from "../matrix/matrix.js";
 import { RotationEngine } from "../rotation/rotation-engine.js";
 import { NbaDisplayMode, NbaDisplayState, NbaScoreResponse, NormalizedDisplayCard, NormalizedGameScore, RotationDisplayState } from "../rotation/types.js";
-import { setDisplayItemCategory, setDisplayItemEnabled } from "../rotation/display-config.js";
+import { cleanupOrphanedCalendarItems, setDisplayItemCategory, setDisplayItemEnabled } from "../rotation/display-config.js";
 import { logWithClock } from "../hardware/logging.js";
 
 const publicDir = path.resolve(process.cwd(), process.env.GLANCEBOARD_PUBLIC_DIR ?? "public");
@@ -30,6 +30,7 @@ export interface RotatingDisplayServer {
 }
 
 export async function startRotatingDisplayServer(port: number): Promise<RotatingDisplayServer> {
+  await cleanupOrphanedCalendarItems();
   const vite = await createViteDevServer();
   let latestState: NbaDisplayState | undefined;
   let latestRotation: RotationDisplayState | undefined;
@@ -234,6 +235,7 @@ export async function startRotatingDisplayServer(port: number): Promise<Rotating
   const calendarDisconnected = async (type: "google-calendar-next-event" | "icloud-calendar-next-event") => {
     const staleOnScreen = sendingCard?.type === type || latestRotation?.cards.some(card => card.id === activeCardId && card.type === type);
     calendarRevision += 1;
+    await cleanupOrphanedCalendarItems();
     rotationEngine.invalidate(item => item.type === type);
     latestRotation = { ...await rotationEngine.refresh(), paused: rotationPaused };
     latestRotation.activeCard = latestRotation.cards.find(card => card.id === activeCardId) ?? latestRotation.activeCard;
@@ -643,6 +645,7 @@ async function handleICloudCalendarApi(
     const calendarName = typeof body.calendarName === "string" ? body.calendarName : undefined;
     const eventShowCount = typeof body.eventShowCount === "number" ? body.eventShowCount : undefined;
     const settings = await icloudCalendar.saveSelectedCalendar(Array.isArray(body.calendarIds) ? body.calendarIds as string[] : calendarId, calendarName, eventShowCount);
+    await onDisconnect();
     sendJson(response, { settings, status: await icloudCalendar.status() });
     return true;
   }
@@ -749,6 +752,7 @@ async function handleGoogleCalendarApi(
       return true;
     }
     const settings = await googleCalendar.saveSelectedCalendar(Array.isArray(body.calendarIds) ? body.calendarIds as string[] : calendarId, calendarName);
+    await onDisconnect();
     sendJson(response, { settings, status: await googleCalendar.status() });
     return true;
   }

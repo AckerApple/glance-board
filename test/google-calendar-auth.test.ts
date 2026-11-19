@@ -201,3 +201,9 @@ test("logout rejects late events so another service cannot repopulate its cache"
     await assert.rejects(resolver.getUpcomingEvents('primary'), /not authenticated/);
   } finally { globalThis.fetch = original; }
 });
+
+test("legacy default calendar installation records a configured source for reconciliation", async () => {
+  const { files, service } = fixture();
+  await service.installRotationItems();
+  assert.deepEqual(files.get("google-calendar.json"), { calendarId: "primary", calendarName: undefined });
+});

@@ -99,6 +99,12 @@ config/icloud-calendar.json
 
 Upcoming iCloud events are cached for 60 seconds. Common daily, weekly, monthly, and yearly recurrence rules are expanded locally. Complex recurrence exceptions such as `EXDATE` and overridden `RECURRENCE-ID` instances are not fully reconciled yet.
 
+### Removed calendar sources
+
+Glanceboard automatically removes installer-owned calendar rotation slots whose saved source or connection no longer exists. Cleanup runs on startup and calendar selection/disconnect; every rotation config load also excludes these orphaned slots, so a cached slide cannot keep rotating. Remaining sources, manually named calendar slots, and non-calendar displays are preserved. An unreadable or malformed source file is treated as unknown, not deleted.
+
+Before changing the saved display list, cleanup saves the complete previous JSON beside it as `display-items.json.calendar-cleanup-*.bak`. No events are deleted from Google or iCloud. After updating an already-running server, restart it normally to activate startup reconciliation, then reload the browser. The physical display must reconnect and receive a new frame to replace an old uploaded program.
+
 ## Architecture
 
 - `src/providers`: external and calculated data providers.
