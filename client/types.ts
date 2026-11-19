@@ -9,6 +9,8 @@ export interface DisplayItem {
   league?: string;
   mode?: string;
   team?: string;
+  teamId?: string;
+  teamName?: string;
   zip?: string;
   resolved?: boolean;
   error?: string;
@@ -164,3 +166,6 @@ export interface BrowserFormSettings {
   autoSendRotation: boolean;
   displayIntensity: number;
 }
+
+export interface SportsTeam { league: "nfl" | "nba" | "nhl" | "mlb"; id: string; name: string; abbreviation: string }
+export interface SportsState { selected: SportsTeam[]; favorites: SportsTeam[]; teams: SportsTeam[]; league: SportsTeam["league"]; query: string; busy: boolean; loading: boolean; message: string }

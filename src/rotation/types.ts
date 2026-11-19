@@ -17,6 +17,7 @@ export type DisplayItemMode = "finals";
 export type DisplayCategoryIcon = "sports" | "calendar" | "local-info" | "time" | "moon" | "generic";
 
 export interface DisplayItemsConfig {
+  excludedBuiltInIds?: string[];
   rotationSeconds: number;
   categories?: DisplayCategoryConfig[];
   items: DisplayItemConfig[];
@@ -36,6 +37,8 @@ export interface DisplayItemConfig {
   league?: SportsLeague;
   mode?: DisplayItemMode;
   team?: string;
+  teamId?: string;
+  teamName?: string;
   zip?: string;
   latitude?: number;
   longitude?: number;
@@ -151,6 +154,7 @@ export interface RotationDisplayState {
 }
 
 export interface NormalizedTeamScore {
+  id?: string;
   name: string;
   abbreviation: string;
   score?: number;

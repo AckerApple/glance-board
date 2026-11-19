@@ -29,10 +29,12 @@ export async function loadDisplayItemsConfig(configPath = process.env.DISPLAY_IT
   const parsed = JSON.parse(await readFile(configPath, "utf8")) as DisplayItemsConfig;
   const categories = normalizeCategories(parsed.categories);
   const configuredItems = await configuredCalendarItems(Array.isArray(parsed.items) ? parsed.items : [], sourceDirectory);
+  const excludedBuiltInIds = Array.isArray(parsed.excludedBuiltInIds) ? [...new Set(parsed.excludedBuiltInIds.filter(isBuiltInDisplayItemId))] : [];
   return {
+    ...(excludedBuiltInIds.length ? { excludedBuiltInIds } : {}),
     rotationSeconds: normalizeRotationSeconds(parsed.rotationSeconds),
     categories,
-    items: mergeBuiltInDisplayItems(configuredItems).map((item) => normalizeDisplayItemCategory(item, categories))
+    items: mergeBuiltInDisplayItems(configuredItems, new Set(excludedBuiltInIds)).map((item) => normalizeDisplayItemCategory(item, categories))
   };
 }
 
@@ -73,9 +75,13 @@ function normalizeCategories(value: unknown): DisplayCategoryConfig[] {
   return [...merged.values()];
 }
 
-function mergeBuiltInDisplayItems(items: DisplayItemConfig[]): DisplayItemConfig[] {
+export function isBuiltInDisplayItemId(id: unknown): id is string {
+  return typeof id === "string" && BUILT_IN_DISPLAY_ITEMS.some(item => item.id === id);
+}
+
+function mergeBuiltInDisplayItems(items: DisplayItemConfig[], excluded: ReadonlySet<string>): DisplayItemConfig[] {
   const configuredById = new Map(items.map((item) => [item.id, item]));
-  const merged = BUILT_IN_DISPLAY_ITEMS.map((builtIn) => ({ ...builtIn, ...configuredById.get(builtIn.id) }));
+  const merged = BUILT_IN_DISPLAY_ITEMS.filter(item => !excluded.has(item.id) || configuredById.has(item.id)).map((builtIn) => ({ ...builtIn, ...configuredById.get(builtIn.id) }));
   const builtInIds = new Set(BUILT_IN_DISPLAY_ITEMS.map((item) => item.id));
   return [
     ...merged,

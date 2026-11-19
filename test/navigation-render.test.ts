@@ -21,18 +21,20 @@ test("retained navigation callbacks keep exactly one page visible and one menu i
   component.inputs = handler => { updateInputs = handler; };
   try {
     const frame = component.original("home");
-    const [menu, home, calendars] = frame.innerHTML;
+    const [menu, home, calendars, sports] = frame.innerHTML;
     // Retain the callbacks from the initial render, as TaggedJS does.
     const homeHidden = home.attributes.find(([name]) => name === "hidden")?.[1] as () => boolean;
     const calendarsHidden = calendars.attributes.find(([name]) => name === "hidden")?.[1] as () => boolean;
+    const sportsHidden = sports.attributes.find(([name]) => name === "hidden")?.[1] as () => boolean;
     assert.ok(updateInputs);
-    for (const page of ["home", "calendars", "home", "calendars", "calendars", "home"] as PageId[]) {
+    for (const page of ["home", "sports", "calendars", "sports", "home", "calendars", "home"] as PageId[]) {
       updateInputs([page]);
       assert.equal(homeHidden(), page !== "home");
       assert.equal(calendarsHidden(), page !== "calendars");
+      assert.equal(sportsHidden(), page !== "sports");
       const markup = menu.render();
       assert.equal((markup.match(/aria-current="page"/g) ?? []).length, 1);
-      assert.match(markup, page === "home" ? /aria-current="page">🏠 Home/ : /aria-current="page">🗓️ Calendars/);
+      assert.match(markup, page === "home" ? /aria-current="page">🏠 Home/ : page === "sports" ? /aria-current="page">🏈 Sports/ : /aria-current="page">🗓️ Calendars/);
       assert.doesNotMatch(markup, /target=/);
     }
   } finally { component.inputs = originalInputs; }

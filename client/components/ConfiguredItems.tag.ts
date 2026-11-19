@@ -2,9 +2,10 @@ import { button, div, h2, input, label, option, section, select, span, strong, s
 import { actions } from "../controller.js";
 import { rotation$ } from "../state.js";
 
-export const ConfiguredItems = tag(() =>
+export const ConfiguredItems = tag((scope: "sports" | "other" = "other") =>
   subscribe(rotation$, ([state]) => {
-    const items = state?.payload?.rotation?.items ?? [];
+    const items = (state?.payload?.rotation?.items ?? []).filter(item =>
+      (item.type === "sports-live-score" || item.type === "sports-next-game") === (scope === "sports"));
     const categories = state?.payload?.rotation?.categories ?? [];
     return section.attr("aria-label", "Configured display items")(
       h2("⚙️ Display Items"),
@@ -28,7 +29,7 @@ export const ConfiguredItems = tag(() =>
                 .onChange((event: Event) => {
                   void actions.setDisplayItemEnabled(item.id, (event.target as HTMLInputElement).checked);
                 })(),
-              strong(item.id),
+              strong(item.teamName ?? item.id),
               span.class`item-detail`(displayItemDetail(item))
             ),
             statusControl,

@@ -33,6 +33,11 @@ export async function fetchScoreboard(league: SportsLeague, fetchImpl: typeof fe
   return fetchScoreboardUrl(ESPN_SCOREBOARD_URLS[league], fetchImpl);
 }
 
+export async function fetchEspnTeamSchedule(league: SportsLeague, teamId: string, fetchImpl: typeof fetch = fetch): Promise<unknown> {
+  const url = ESPN_SCOREBOARD_URLS[league].replace(/scoreboard$/, `teams/${encodeURIComponent(teamId)}/schedule`);
+  return fetchScoreboardUrl(url, fetchImpl);
+}
+
 export async function fetchScoreboardForDate(league: SportsLeague, date: Date, fetchImpl: typeof fetch = fetch): Promise<unknown> {
   const url = new URL(ESPN_SCOREBOARD_URLS[league]);
   url.searchParams.set("dates", formatEspnDate(date));
@@ -64,7 +69,8 @@ async function fetchScoreboardUrl(url: string, fetchImpl: typeof fetch): Promise
     response = await fetchImpl(url, {
       headers: {
         accept: "application/json"
-      }
+      },
+      signal: AbortSignal.timeout(10_000)
     });
   } catch (error) {
     throw new Error(`ESPN scoreboard fetch failed (${url}): ${errorDetail(error)}`);
@@ -195,12 +201,16 @@ export function formatGameForDisplay(game: NormalizedGameScore): string[] {
   return game.displayLines;
 }
 
+export function formatSportsPeriod(game: NormalizedGameScore): string {
+  return `${game.league === "NHL" ? "P" : game.league === "MLB" ? "IN" : "Q"}${game.period ?? "-"}`;
+}
+
 export function formatGameForDotMatrix(game: NormalizedGameScore): string[] {
   if (game.status === "live") {
     const away = game.awayTeam;
     const home = game.homeTeam;
     return [
-      fitLine(`${away?.abbreviation ?? "AWY"}${away?.score ?? "-"} Q${game.period ?? "-"}`),
+      fitLine(`${away?.abbreviation ?? "AWY"}${away?.score ?? "-"} ${formatSportsPeriod(game)}`),
       fitLine(`${home?.abbreviation ?? "HME"}${home?.score ?? "-"} ${game.clock ?? ""}`.trim())
     ];
   }
@@ -272,9 +282,12 @@ function normalizeEvent(league: SportsLeague, event: unknown): NormalizedGameSco
 
 function normalizeTeam(competitor: UnknownRecord) {
   const team = isRecord(competitor.team) ? competitor.team : {};
-  const score = Number(competitor.score);
+  const rawScore = isRecord(competitor.score) ? competitor.score.value ?? competitor.score.displayValue : competitor.score;
+  const score = rawScore === undefined || rawScore === null || rawScore === "" ? NaN : Number(rawScore);
+  const id = team.id ?? competitor.id;
 
   return {
+    ...(typeof id === "string" || typeof id === "number" ? { id: String(id) } : {}),
     name: asString(team.displayName) ?? asString(team.name) ?? "Unknown",
     abbreviation: (asString(team.abbreviation) ?? asString(team.shortDisplayName) ?? "???").slice(0, 4).toUpperCase(),
     score: Number.isFinite(score) ? score : undefined
@@ -289,8 +302,8 @@ function normalizeStatus(statusLike: unknown): NormalizedGameScore["status"] {
   const description = asString(type.description)?.toLowerCase() ?? "";
 
   if (state === "in" || name.includes("in_progress")) return "live";
-  if (state === "post" || name.includes("final")) return "final";
   if (description.includes("postponed") || name.includes("postponed")) return "postponed";
+  if (state === "post" || name.includes("final")) return "final";
   if (state === "pre") return "scheduled";
   return "scheduled";
 }
@@ -309,7 +322,7 @@ function getClock(statusLike: unknown): string | undefined {
 
 function buildDisplayLines(game: NormalizedGameScore): string[] {
   if (game.status === "live") {
-    return [...compactTeamScoreLines(game), fitLine(`Q${game.period ?? "-"} ${game.clock ?? ""}`.trim())];
+    return [...compactTeamScoreLines(game), fitLine(`${formatSportsPeriod(game)} ${game.clock ?? ""}`.trim())];
   }
 
   if (game.status === "final") return [...compactTeamScoreLines(game), "Final"];

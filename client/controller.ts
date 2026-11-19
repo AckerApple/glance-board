@@ -1,6 +1,8 @@
 import { ApiError, getJson, postJson } from "./api.js";
 import { availableCards } from "./display-utils.js";
 import {
+  sports$,
+  updateSports,
   calendar$,
   hardware$,
   icloudCalendar$,
@@ -12,6 +14,7 @@ import {
   updateRotation
 } from "./state.js";
 import type {
+  SportsTeam,
   CalendarEvent,
   CalendarOption,
   CalendarStatus,
@@ -37,6 +40,10 @@ let rotateStartedAt = 0;
 export const actions = {
   start,
   stop,
+  refreshSports,
+  loadSportsTeams,
+  addSportsTeam,
+  removeSportsTeam,
   showNextItem,
   toggleRotationPause,
   selectCard,
@@ -67,7 +74,7 @@ export const actions = {
 
 async function start(): Promise<void> {
   stopped = false;
-  await Promise.all([refreshDisplayStatus(), refreshLocation(), refreshCalendar(), refreshICloudCalendar()]);
+  await Promise.all([refreshDisplayStatus(), refreshLocation(), refreshCalendar(), refreshICloudCalendar(), refreshSports()]);
   startHardwareStatusPolling();
   await loadBrowserSettings();
   startRotationEvents();
@@ -602,4 +609,34 @@ function hardwareErrorStatus(error: unknown): DisplayStatus {
 
 function errorMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
+}
+
+
+let sportsRequest = 0;
+async function refreshSports(): Promise<void> {
+  try {
+    const state = await getJson<{ selected: SportsTeam[]; favorites: SportsTeam[] }>("/api/sports");
+    updateSports({ ...state, message: "Choose teams below. Live/recent scores and next games rotate on your display." });
+  } catch (error) { updateSports({ message: errorMessage(error) }); }
+}
+async function loadSportsTeams(league: SportsTeam["league"]): Promise<void> {
+  const request = ++sportsRequest;
+  updateSports({ league, query: "", teams: [], loading: true, message: "Loading team directory…" });
+  try {
+    const { teams } = await getJson<{ teams: SportsTeam[] }>(`/api/sports/teams?league=${league}`);
+    if (request === sportsRequest) updateSports({ teams, message: "Search by team name, city or abbreviation, then Add." });
+  } catch (error) { if (request === sportsRequest) updateSports({ message: errorMessage(error) }); }
+  finally { if (request === sportsRequest) updateSports({ loading: false }); }
+}
+async function addSportsTeam(team: SportsTeam): Promise<void> { await changeSportsTeam(team, "add"); }
+async function removeSportsTeam(team: SportsTeam): Promise<void> { await changeSportsTeam(team, "remove"); }
+async function changeSportsTeam(team: SportsTeam, operation: "add" | "remove"): Promise<void> {
+  if (sports$[0].busy) return;
+  updateSports({ busy: true });
+  try {
+    const state = await postJson<{ selected: SportsTeam[]; favorites: SportsTeam[] }>(`/api/sports/teams/${operation}`, { league: team.league, id: team.id });
+    updateSports({ ...state, message: `${team.name} ${operation === "add" ? "added" : "removed"}.` });
+    await refreshRotation();
+  } catch (error) { updateSports({ message: errorMessage(error) }); }
+  finally { updateSports({ busy: false }); }
 }

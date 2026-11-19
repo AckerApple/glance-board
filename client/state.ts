@@ -1,5 +1,6 @@
 import { array } from "taggedjs";
 import type {
+  SportsState,
   CalendarEvent,
   CalendarOption,
   CalendarStatus,
@@ -108,3 +109,6 @@ function pruneStaleICloudSections(): void {
   window.setTimeout(prune, 50);
   window.setTimeout(prune, 250);
 }
+
+export const sports$ = array<SportsState>([{ selected: [], favorites: [], teams: [], league: "nfl", query: "", busy: false, loading: false, message: "Loading sports settings…" }]);
+export function updateSports(patch: Partial<SportsState>): void { sports$[0] = { ...sports$[0], ...patch }; }

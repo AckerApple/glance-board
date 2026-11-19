@@ -1,5 +1,6 @@
 import { button, div, h1, hr, main, nav, p, subscribe, tag } from "taggedjs";
 import { destinations, navigation$, type PageId } from "../navigation.js";
+import { SportsControls } from "./SportsControls.tag.js";
 import { ActiveDisplay } from "./ActiveDisplay.tag.js";
 import { CalendarControls } from "./CalendarControls.tag.js";
 import { ConfiguredItems } from "./ConfiguredItems.tag.js";
@@ -45,6 +46,12 @@ export const NavigationLayout = tag((page: PageId) => {
       hr(),
       CalendarControls(),
       ICloudCalendarControls()
+    ),
+    div.id("sportsPage").attr("hidden", () => page !== "sports")(
+      h1("Sports"),
+      p.class`muted`("Choose your teams and control their matrix rotation."),
+      SportsControls(),
+      ConfiguredItems("sports")
     )
   );
 });

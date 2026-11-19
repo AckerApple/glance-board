@@ -3,7 +3,8 @@ import { array } from "taggedjs";
 // Add future destinations here, then mount their page in App.
 export const destinations = [
   { id: "home", href: "#/", label: "🏠 Home" },
-  { id: "calendars", href: "#/calendars", label: "🗓️ Calendars" }
+  { id: "calendars", href: "#/calendars", label: "🗓️ Calendars" },
+  { id: "sports", href: "#/sports", label: "🏈 Sports" }
 ] as const;
 export type PageId = typeof destinations[number]["id"];
 

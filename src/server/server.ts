@@ -1,4 +1,5 @@
 import http from "node:http";
+import { SportsSettingsService, FAVORITE_TEAMS, isSportsItem, isSportsLeague } from "../providers/sports-settings-service.js";
 import { readFile } from "node:fs/promises";
 import path from "node:path";
 import { DotMatrixController } from "./display.js";
@@ -57,6 +58,8 @@ export async function startRotatingDisplayServer(port: number): Promise<Rotating
     deviceId: process.env.LED_DEVICE_ID
   });
   const browserSettings = new BrowserSettingsService();
+  const sportsSettings = new SportsSettingsService();
+  await sportsSettings.initialize();
 
   const stopReconnect = () => {
     if (reconnectTimer) clearTimeout(reconnectTimer);
@@ -266,6 +269,41 @@ export async function startRotatingDisplayServer(port: number): Promise<Rotating
   const server = http.createServer(async (request, response) => {
     try {
       const url = new URL(request.url ?? "/", `http://${request.headers.host ?? "localhost"}`);
+
+      if (url.pathname === "/api/sports" && request.method === "GET") {
+        sendJson(response, { selected: await sportsSettings.selected(), favorites: FAVORITE_TEAMS });
+        return;
+      }
+      if (url.pathname === "/api/sports/teams" && request.method === "GET") {
+        const league = url.searchParams.get("league");
+        if (!isSportsLeague(league)) { sendJson(response, { error: "Choose NFL, NBA, NHL or MLB." }, 400); return; }
+        sendJson(response, { teams: await sportsSettings.teams(league) });
+        return;
+      }
+      if (["/api/sports/teams/add", "/api/sports/teams/remove"].includes(url.pathname) && request.method === "POST") {
+        const body = await readJsonBody(request);
+        if (!isSportsLeague(body.league) || typeof body.id !== "string" || !/^\d+$/.test(body.id)) { sendJson(response, { error: "A valid league and team ID are required." }, 400); return; }
+        if (url.pathname.endsWith("/add")) await sportsSettings.add(body.league, body.id);
+        else await sportsSettings.remove(body.league, body.id);
+        const previousCardId = activeCardId;
+        const previousSendingId = sendingCard?.id;
+        calendarRevision += 1;
+        rotationEngine.invalidate(isSportsItem);
+        latestRotation = { ...await rotationEngine.refresh(), paused: rotationPaused };
+        latestRotation.activeCard = latestRotation.cards.find(card => card.id === activeCardId) ?? latestRotation.activeCard;
+        activeCardId = latestRotation.activeCard?.id;
+        broadcastRotation();
+        const removedActive = [previousCardId, previousSendingId].some(id => id && !latestRotation?.cards.some(card => card.id === id));
+        if (removedActive && display.isConnectedOrSending()) {
+          await display.sendCard(latestRotation.activeCard ?? {
+            id: "empty-rotation", type: "date-time", enabled: true, title: "No displays",
+            status: "no_game", readableLines: ["NO DISPLAYS"], matrixLines: ["NO DISPLAYS"]
+          });
+        }
+        scheduleBackendRotation();
+        sendJson(response, { selected: await sportsSettings.selected(), favorites: FAVORITE_TEAMS });
+        return;
+      }
 
       if (url.pathname === "/api/rotation/events") {
         response.writeHead(200, {
@@ -914,8 +952,8 @@ function contentType(filePath: string): string {
   return "application/octet-stream";
 }
 
-function sendJson(response: http.ServerResponse, payload: unknown): void {
-  response.writeHead(200, {
+function sendJson(response: http.ServerResponse, payload: unknown, status = 200): void {
+  response.writeHead(status, {
     "content-type": "application/json",
     "cache-control": "no-store"
   });
