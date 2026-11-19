@@ -1,10 +1,12 @@
+import { uiLabel } from "./presentation.js";
 import { array } from "taggedjs";
 
 // Add future destinations here, then mount their page in App.
 export const destinations = [
-  { id: "home", href: "#/", label: "🏠 Home" },
-  { id: "calendars", href: "#/calendars", label: "🗓️ Calendars" },
-  { id: "sports", href: "#/sports", label: "🏈 Sports" }
+  { id: "home", href: "#/", label: uiLabel("home", "Home") },
+  { id: "calendars", href: "#/calendars", label: uiLabel("calendars", "Calendars") },
+  { id: "sports", href: "#/sports", label: uiLabel("sports", "Sports") },
+  { id: "local-data", href: "#/local-data", label: uiLabel("local-data", "Local Data") }
 ] as const;
 export type PageId = typeof destinations[number]["id"];
 

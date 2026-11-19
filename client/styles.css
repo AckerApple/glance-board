@@ -718,3 +718,18 @@ summary {
 @media (max-width: 520px) { .sports-team-row { padding: 10px; gap: 8px; } .sports-search { flex-direction: column; align-items: stretch; } .sports-search label { flex-basis: auto; } }
 
 .sports-search input { padding: 11px 12px; border: 1px solid #ffffff26; border-radius: 8px; background: #161616; color: inherit; font: inherit; }
+
+/* Keep decorated provider labels readable inside narrow settings cards. */
+.item-list { grid-template-columns: repeat(auto-fit, minmax(min(100%, 330px), 1fr)); }
+.item-toggle { display: grid; grid-template-columns: 18px minmax(0, 1fr); }
+.item-toggle input { width: 16px; height: 16px; margin: 0; }
+.item-toggle .item-detail { grid-column: 2; overflow-wrap: anywhere; }
+@media (max-width: 520px) {
+  .item-row { grid-template-columns: minmax(0, 1fr) auto; }
+  .item-toggle { grid-column: 1 / -1; }
+}
+.readable-panel { min-width: 0; }
+@media (max-width: 520px) {
+  .panel-header { flex-wrap: wrap; gap: 8px; }
+  .panel-header h2 { min-width: 0; overflow-wrap: anywhere; }
+}

@@ -1,3 +1,4 @@
+import { uiLabel, presentLabel } from "../presentation.js";
 import { button, canvas, details, div, h2, h3, p, pre, section, span, strong, subscribe, summary, tag } from "taggedjs";
 import { actions } from "../controller.js";
 import { formatGameDetails, visibleCard } from "../display-utils.js";
@@ -16,7 +17,7 @@ export const ActiveDisplay = tag(() => {
 
     return [
       section.attr("aria-labelledby", "matrixTitle")(
-        h2.id("matrixTitle")("16x96 Dot Matrix Preview"),
+        h2.id("matrixTitle")(uiLabel("preview", "16x96 Dot Matrix Preview")),
         canvas.id(MATRIX_ID).attr("aria-label", "16 by 96 dot matrix preview")(),
         div.class`rotation-progress`.attr("aria-label", "Time until next screen")(
           div.class`rotation-progress-fill`.attr("style", (_: unknown) => `width: ${progress}%`)()
@@ -25,7 +26,7 @@ export const ActiveDisplay = tag(() => {
       section.class`panels`.attr("aria-label", "Readable display output")(
         div.class`readable-panel active`(
           div.class`panel-header`(
-            h2('👀 ', () => card?.title || "Active Item"),
+            h2(() => presentLabel(card?.title || "Active Item", { provider: card?.type, league: card?.league, teamId: state?.payload?.rotation?.items?.find(item => item.id === card?.id)?.teamId, ui: "show" })),
             div.class`panel-actions`(
               span(() => state?.paused ? "Paused" : card?.status ?? "Matrix"),
               button
@@ -55,7 +56,7 @@ const screenDataPanel = tag((card: DisplayCard) => {
   })
 
   return div.class`screen-data`(
-    h3("Data Behind This Screen"),
+    h3(uiLabel("data", "Data Behind This Screen")),
     div.class`screen-data-grid`(
       (_: unknown) => {
         return summaryItems.map(([label, value]) =>

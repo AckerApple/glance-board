@@ -149,3 +149,11 @@ Secrets are never returned by status APIs or included in browser debug output.
 Open **Sports** (`#/sports`) for all sports display controls. On the first start of this version, Dolphins, Heat, Panthers, and Marlins live/recent-score and next-game entries are installed. Existing item IDs, categories, enabled flags, and rotation settings are preserved; the one-time migration is recorded in `sports-settings.json`. Removing a team removes only its local sports rotation entries, including legacy built-ins, and persists across reloads. Re-add it with the favorite shortcut or browse NFL/NBA/NHL/MLB and search by city, team name, or abbreviation. Team identity uses ESPN league + team ID, not the shared Miami abbreviation.
 
 Team feeds show that team's live game, a final from the last 24 hours, or its next scheduled game; no unrelated-team fallback. The next-game entry remains separate, and both matrix sizes use the existing renderers. Team directories are cached for 24 hours with a retryable error when ESPN is unavailable. No Loco Beach Coconuts feed is configured. This change takes effect when the updated local server is normally restarted and the browser refreshed; building does not restart it.
+
+### Local Data
+
+Open **📍 Local Data** (`#/local-data`) for the shared weather/gas ZIP or device-location controls and the enable, Show, category, and freshness settings for weather, gas, internet status, moon phase, and date/time. These controls are no longer on Home. This is settings organization only: saved location, enabled flags, custom categories, and normal weather/gas playback are unchanged. Other display types remain in their existing tabs.
+
+### Web presentation icons
+
+Web-only emoji defaults live in `client/presentation.ts`, keyed by stable UI, provider, league, and league/team identities. `resolveEmoji` and label helpers accept typed overrides for a future Advanced preference UI; no preferences or picker are installed yet. These helpers never mutate stored/search labels or physical matrix content. Moon Phase uses 🌕 consistently, and sports rows retain their league emoji with clear mascots where available (Dolphins 🐬, Heat 🔥).

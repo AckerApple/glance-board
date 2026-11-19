@@ -1,3 +1,4 @@
+import { uiLabel, presentLabel } from "../presentation.js";
 import { a, button, div, form, h2, input, label, option, p, section, select, small, span, strong, subscribe, tag } from "taggedjs";
 import { actions } from "../controller.js";
 import { icloudCalendar$ } from "../state.js";
@@ -10,7 +11,7 @@ export const ICloudCalendarControls = tag(() =>
     const eventShowCount = status.eventShowCount ?? 3;
 
     return section.class`calendar-provider-card`.attr("aria-labelledby", "icloudCalendarTitle")(
-      h2.id("icloudCalendarTitle")("🍎 🗓️ iCloud Calendar"),
+      h2.id("icloudCalendarTitle")(presentLabel("iCloud Calendar", {provider:"icloud-calendar-next-event"})),
       p.class`muted`(state?.message ?? "iCloud Calendar: checking setup..."),
       div.class`calendar-security-note`(
         strong("Use an Apple app-specific password, not your normal Apple password."),
@@ -52,7 +53,7 @@ export const ICloudCalendarControls = tag(() =>
         button.type("submit").disabled((_: unknown) => Boolean(state?.busy))("Connect")
       ),
       div.class`display-actions`(
-        button.type("button").disabled((_: unknown) => Boolean(state?.busy)).onClick(actions.refreshICloudCalendar)("Refresh"),
+        button.type("button").disabled((_: unknown) => Boolean(state?.busy)).onClick(actions.refreshICloudCalendar)(uiLabel("refresh", "Refresh")),
         button.type("button").disabled((_: unknown) => Boolean(state?.busy || !status.connected)).onClick(actions.disconnectICloudCalendar)("Disconnect")
       ),
       div.class`calendar-setup`(
@@ -84,13 +85,13 @@ export const ICloudCalendarControls = tag(() =>
           const selected = Array.from(control.selectedOptions).map(option => option.value);
           const count = countControl instanceof HTMLInputElement ? Number(countControl.value) : 3;
           void actions.selectICloudCalendar(selected, undefined, count);
-        })("Save Calendars"),
+        })(uiLabel("save", "Save Calendars")),
         button.class`install-calendar-control`.type("button").disabled((_: unknown) => Boolean(state?.busy || !status.selectedCalendarId)).onClick(() => {
           const control = document.getElementById("icloudCalendarSelect");
           const countControl = document.getElementById("icloudEventShowCount");
           const count = countControl instanceof HTMLInputElement ? Number(countControl.value) : 3;
           if (control instanceof HTMLSelectElement) void actions.installICloudCalendarItems(undefined, count);
-        })("Install Rotation Items")
+        })(uiLabel("rotation", "Install Rotation Items"))
       ),
       div.class`display-actions`(
         button.type("button").disabled(() => Boolean(state?.busy || !status.connected || !selectedIds.length)).onClick(() => actions.selectICloudCalendar([], undefined, eventShowCount))("Clear selection")

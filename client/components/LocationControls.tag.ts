@@ -1,11 +1,16 @@
+import { uiLabel } from "../presentation.js";
 import { button, div, form, h2, input, label, p, section, subscribe, tag } from "taggedjs";
 import { actions } from "../controller.js";
-import { location$ } from "../state.js";
+import { location$, type LocationState } from "../state.js";
 
 export const LocationControls = tag(() =>
-  subscribe(location$, ([state]) =>
-    section.attr("aria-labelledby", "locationTitle")(
-      h2.id("locationTitle")("☁️ Weather & 🚗 Gas Location"),
+  subscribe(location$, ([state]) => LocationPanel(state))
+);
+
+export const LocationPanel = tag((state: LocationState) => {
+  LocationPanel.inputs(([next]) => { state = next; });
+  return section.attr("aria-labelledby", "locationTitle")(
+      h2.id("locationTitle")(uiLabel("weatherGas", "Weather & Gas Location")),
       form.class`location-form`.onSubmit((event: Event) => {
         event.preventDefault();
         const data = new FormData(event.currentTarget as HTMLFormElement);
@@ -25,11 +30,10 @@ export const LocationControls = tag(() =>
             .attr("placeholder", "33066")
             .disabled((_: unknown) => Boolean(state?.busy))
             .attr("required", true)(),
-          button.type("submit").disabled((_: unknown) => Boolean(state?.busy))("Save ZIP"),
-          button.type("button").disabled((_: unknown) => Boolean(state?.busy)).onClick(actions.detectLocation)("Use My Location")
+          button.type("submit").disabled((_: unknown) => Boolean(state?.busy))(uiLabel("save", "Save ZIP")),
+          button.type("button").disabled((_: unknown) => Boolean(state?.busy)).onClick(actions.detectLocation)(uiLabel("location", "Use My Location"))
         )
       ),
-      p.class`muted`(state?.message ?? "Location: loading...")
-    )
-  )
-);
+      p.class`muted`.attr("role", "status")(() => state?.message ?? "Location: loading...")
+    );
+});

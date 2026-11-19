@@ -14,7 +14,7 @@ test("retained Sports panel updates selected teams, search results and status", 
     const frame = component.original(state);
     assert.match(frame.render(), /Remove/);
     update!([{...state,selected:[],message:"Removed"}]);
-    assert.doesNotMatch(frame.render(), />Remove</);
+    assert.doesNotMatch(frame.render(), />➖ Remove</);
     assert.match(frame.render(), /Add team/);
     assert.match(frame.render(), /Removed/);
     update!([{...state,teams:[team],query:"unmatched",message:"Search"}]);

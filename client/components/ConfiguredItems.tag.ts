@@ -1,19 +1,32 @@
+import { uiLabel, displayItemLabel } from "../presentation.js";
 import { button, div, h2, input, label, option, section, select, span, strong, subscribe, tag } from "taggedjs";
+import { displayItemScope, type DisplayItemScope } from "../display-item-scope.js";
+import type { DisplayItem, DisplayCategory } from "../types.js";
 import { actions } from "../controller.js";
-import { rotation$ } from "../state.js";
+import { rotation$, type RotationState } from "../state.js";
 
-export const ConfiguredItems = tag((scope: "sports" | "other" = "other") =>
-  subscribe(rotation$, ([state]) => {
-    const items = (state?.payload?.rotation?.items ?? []).filter(item =>
-      (item.type === "sports-live-score" || item.type === "sports-next-game") === (scope === "sports"));
-    const categories = state?.payload?.rotation?.categories ?? [];
+export const ConfiguredItems = tag((scope: DisplayItemScope = "other") =>
+  subscribe(rotation$, ([state]) => ConfiguredItemsPanel(state, scope))
+);
+
+export const ConfiguredItemsPanel = tag((state: RotationState, scope: DisplayItemScope) => {
+    ConfiguredItemsPanel.inputs(([next, nextScope]) => { state = next; scope = nextScope; });
+    const items = () => (state?.payload?.rotation?.items ?? []).filter(item =>
+      displayItemScope(item) === scope);
+    const categories = () => state?.payload?.rotation?.categories ?? [];
     return section.attr("aria-label", "Configured display items")(
-      h2("⚙️ Display Items"),
+      h2(uiLabel("items", "Display Items")),
       div.class`item-list`(
-        items.map((item) => {
-          const active = state?.currentCardId === item.id;
-          const status = item.enabled ? item.error ? "ERROR" : item.resolved ? "Enabled" : "Pending" : "Disabled";
-          const statusControl = item.error
+        () => items().map(item => ConfiguredItemRow(item, state, categories()).key(item.id))
+      )
+    );
+});
+
+export const ConfiguredItemRow = tag((item: DisplayItem, state: RotationState, categories: DisplayCategory[]) => {
+  ConfiguredItemRow.inputs(([next, nextState, nextCategories]) => { item = next; state = nextState; categories = nextCategories; });
+          const active = () => state?.currentCardId === item.id;
+          const status = () => item.enabled ? item.error ? "ERROR" : item.resolved ? "Enabled" : "Pending" : "Disabled";
+          const statusControl = () => item.error
             ? button
                 .class`item-status item-status-error`
                 .type("button")
@@ -21,7 +34,7 @@ export const ConfiguredItems = tag((scope: "sports" | "other" = "other") =>
                   window.alert(item.error ?? "Unknown display item error");
                 })(status)
             : span.class`item-status`(status);
-          return div.class((_: unknown) => `item-row ${active ? "active" : ""}`)(
+          return div.class((_: unknown) => `item-row ${active() ? "active" : ""}`)(
             label.class`checkbox item-toggle`(
               input
                 .type("checkbox")
@@ -29,15 +42,15 @@ export const ConfiguredItems = tag((scope: "sports" | "other" = "other") =>
                 .onChange((event: Event) => {
                   void actions.setDisplayItemEnabled(item.id, (event.target as HTMLInputElement).checked);
                 })(),
-              strong(item.teamName ?? item.id),
-              span.class`item-detail`(displayItemDetail(item))
+              strong(() => displayItemLabel(item)),
+              span.class`item-detail`(() => displayItemDetail(item))
             ),
             statusControl,
             button
-              .class((_: unknown) => `item-chip ${active ? "active" : ""}`)
+              .class((_: unknown) => `item-chip ${active() ? "active" : ""}`)
               .type("button")
               .disabled((_: unknown) => !item.resolved)
-              .onClick(() => actions.selectCard(item.id))("Show"),
+              .onClick(() => actions.selectCard(item.id))(uiLabel("show", "Show")),
             label.class`item-category`(
               span("Category"),
               select
@@ -45,16 +58,12 @@ export const ConfiguredItems = tag((scope: "sports" | "other" = "other") =>
                 .onChange((event: Event) => {
                   void actions.setDisplayItemCategory(item.id, (event.target as HTMLSelectElement).value);
                 })(
-                  categories.map((category) => option.value(category.id)(category.label))
+                  () => categories.map((category) => option.value(category.id)(category.label))
                 )
             ),
-            div.class`item-freshness`(freshnessText(item))
+            div.class`item-freshness`(() => freshnessText(item))
           );
-        })
-      )
-    );
-  })
-);
+});
 
 function displayItemDetail(item: { type?: string; league?: string; mode?: string; team?: string; zip?: string }): string {
   return [item.type, item.league?.toUpperCase(), item.team, item.mode, item.zip].filter(Boolean).join(" · ");

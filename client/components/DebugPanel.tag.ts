@@ -1,3 +1,4 @@
+import { uiLabel } from "../presentation.js";
 import { details, div, input, label, p, pre, span, strong, subscribe, summary, tag } from "taggedjs";
 import { actions } from "../controller.js";
 import { visibleCard } from "../display-utils.js";
@@ -35,7 +36,7 @@ export const DebugPanel = tag(() =>
       p.class`muted`(`Last updated: ${payload?.fetchedAt ? new Date(payload.fetchedAt).toLocaleTimeString() : "never"}`),
       state?.error ? p.class`error`(`${state.error}. Showing the last successful display while retrying.`) : null,
       details(
-        summary("Debug Console"),
+        summary(uiLabel("debug", "Debug Console")),
         div.class`debug-cards`(
           cards.map(([label, value]) =>
             div.class`debug-card`(

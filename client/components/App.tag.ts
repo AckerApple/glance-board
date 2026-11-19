@@ -1,3 +1,4 @@
+import { uiLabel } from "../presentation.js";
 import { button, div, h1, hr, main, nav, p, subscribe, tag } from "taggedjs";
 import { destinations, navigation$, type PageId } from "../navigation.js";
 import { SportsControls } from "./SportsControls.tag.js";
@@ -34,24 +35,28 @@ export const NavigationLayout = tag((page: PageId) => {
       hr(),
       ConfiguredItems(),
       hr(),
-      LocationControls(),
-      hr(),
       HardwareControls(),
       hr(),
       DebugPanel()
     ),
     div.id("calendarsPage").attr("hidden", () => page !== "calendars")(
-      h1("Calendars"),
+      h1(uiLabel("calendars", "Calendars")),
       p.class`muted`("Connect calendars, choose upcoming events, and add them to your display rotation."),
       hr(),
       CalendarControls(),
       ICloudCalendarControls()
     ),
     div.id("sportsPage").attr("hidden", () => page !== "sports")(
-      h1("Sports"),
+      h1(uiLabel("sports", "Sports")),
       p.class`muted`("Choose your teams and control their matrix rotation."),
       SportsControls(),
       ConfiguredItems("sports")
+    ),
+    div.id("localDataPage").attr("hidden", () => page !== "local-data")(
+      h1(uiLabel("local-data", "Local Data")),
+      p.class`muted`("Manage weather, gas prices, internet status, moon phase, and date/time. Enabled slides stay in your normal rotation."),
+      div.class`calendar-provider-card`(LocationControls()),
+      div.class`calendar-provider-card`(ConfiguredItems("local-data"))
     )
   );
 });

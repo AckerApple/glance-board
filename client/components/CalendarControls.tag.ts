@@ -1,3 +1,4 @@
+import { uiLabel, presentLabel } from "../presentation.js";
 import { a, button, details, div, form, h2, h3, li, ol, input, label, option, p, pre, section, select, span, strong, subscribe, summary, tag } from "taggedjs";
 import { actions } from "../controller.js";
 import { calendar$, type CalendarState } from "../state.js";
@@ -17,7 +18,7 @@ export const GoogleCalendarPanel = tag((state: CalendarState) => {
     });
 
     return section.class`calendar-provider-card`.attr("aria-labelledby", "googleCalendarTitle")(
-      h2.id("googleCalendarTitle")("📅 Google Calendar"),
+      h2.id("googleCalendarTitle")(presentLabel("Google Calendar", {provider:"google-calendar-next-event"})),
       p("Connect your Google account, allow read-only access, then choose the calendars to show. Glanceboard cannot edit or delete your Google events."),
       p.class`google-setup-status`(() => status.credentialsConfigured ? "✓ Google setup saved on this board. Your keys stay private; blank credential fields do not mean they were lost." : "Google app setup has not been saved on this board yet."),
       p.class`google-account-status`(() => status.authenticated
@@ -27,7 +28,7 @@ export const GoogleCalendarPanel = tag((state: CalendarState) => {
       p.class`google-calendar-notice`.attr("hidden", () => status.credentialsConfigured !== false)("Google sign-in isn’t enabled on this board yet. Ask the board owner to enable it; you don’t need to create a Google Cloud project."),
       div.class`display-actions`(
         button.type("button").disabled((_: unknown) => Boolean(state?.busy || !status.credentialsConfigured)).onClick(actions.signInCalendar)(() => status.authenticated ? "Change account / reconnect" : "Connect Google Calendar"),
-        button.type("button").disabled((_: unknown) => Boolean(state?.busy)).onClick(actions.refreshCalendar)("Refresh"),
+        button.type("button").disabled((_: unknown) => Boolean(state?.busy)).onClick(actions.refreshCalendar)(uiLabel("refresh", "Refresh")),
         button.type("button").attr("hidden", () => !status.authenticated && !state.busy && !state.disconnecting).disabled((_: unknown) => Boolean(state?.disconnecting)).onClick(actions.disconnectCalendar)("Disconnect from Glanceboard"),
         button.type("button").attr("hidden", () => !state.busy).disabled(() => !state.busy || Boolean(state.disconnecting)).onClick(actions.cancelCalendarRequest)("Cancel Request")
       ),
@@ -35,7 +36,7 @@ export const GoogleCalendarPanel = tag((state: CalendarState) => {
         ? "Disconnect removes the saved tokens from this Glanceboard server. To revoke Google’s permission as well, use your Google account’s connections page below."
         : "Choose your account on Google and allow Calendar access. You never need to enter your Google password or tokens here."),
       div.attr("hidden", () => !status.authenticated)(
-        h3("Choose what to show"),
+        h3(uiLabel("show", "Choose what to show")),
         div.class`google-calendar-discovery-error`.attr("role", "alert").attr("hidden", () => state.discoveryState !== "error")(
           p(() => state.discoveryError ?? "Calendar discovery failed. Try Refresh."),
           a.href(() => state.setupUrl ?? "https://console.cloud.google.com/apis/library/calendar-json.googleapis.com").target("_blank").attr("rel", "noopener noreferrer").attr("hidden", () => !state.setupUrl)("Enable Google Calendar API for this project"),
@@ -57,13 +58,13 @@ export const GoogleCalendarPanel = tag((state: CalendarState) => {
           button.type("button").disabled((_: unknown) => Boolean(state?.busy || !status.authenticated || !selectedIds.length)).onClick(() => {
             const control = document.getElementById("calendarSelect");
             if (control instanceof HTMLSelectElement) void actions.installCalendarItems();
-          })("Show on Glance Board"),
+          })(uiLabel("show", "Show on Glance Board")),
           button.type("button").disabled(() => Boolean(state.busy || !status.authenticated || !selectedIds.length)).onClick(() => actions.selectCalendar([]))("Clear selection"),
           button.type("button").disabled(() => Boolean(state.busy || !status.displayEnabled)).onClick(actions.hideGoogleCalendarItems)("Hide from Glance Board")
         ),
         p.class`muted`("Select multiple calendars with Ctrl/Command-click. Clear selection removes all calendars from the event list."),
         p.class`muted`(() => !selectedIds.length ? "Choose calendars to show upcoming events on your board." : status.displayEnabled ? "Google Calendar is showing on your board. Up to three upcoming events rotate automatically." : "Google Calendar is hidden from your board. Choose Show on Glance Board to enable it."),
-        h3("Upcoming events preview"),
+        h3(uiLabel("upcoming", "Upcoming events preview")),
         div.class`calendar-events`(
           () => state.events.length
             ? state.events.map((event, index) => calendarEvent(event).key(JSON.stringify([event.calendarId, event.id ?? index, event.startTime])))

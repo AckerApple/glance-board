@@ -1,3 +1,4 @@
+import { uiLabel } from "../presentation.js";
 import { button, div, h2, input, label, p, section, span, strong, subscribe, tag } from "taggedjs";
 import { actions } from "../controller.js";
 import { hardware$ } from "../state.js";
@@ -11,10 +12,10 @@ export const HardwareControls = tag(() =>
       : "Display: checking...";
 
     return section.attr("aria-labelledby", "displayTitle")(
-      h2.id("displayTitle")("💡 Dot Matrix Hardware"),
+      h2.id("displayTitle")(uiLabel("hardware", "Dot Matrix Hardware")),
       div.class`display-actions`(
-        button.type("button").disabled((_: unknown) => Boolean(state?.busy)).onClick(actions.connectDisplay)("Connect"),
-        button.type("button").disabled((_: unknown) => Boolean(state?.busy)).onClick(actions.sendCurrent)("Send Showing Item"),
+        button.type("button").disabled((_: unknown) => Boolean(state?.busy)).onClick(actions.connectDisplay)(uiLabel("connect", "Connect")),
+        button.type("button").disabled((_: unknown) => Boolean(state?.busy)).onClick(actions.sendCurrent)(uiLabel("show", "Send Showing Item")),
         button.type("button").disabled((_: unknown) => Boolean(state?.busy)).onClick(actions.disconnectDisplay)("Disconnect"),
         label.class`checkbox`(
           input
